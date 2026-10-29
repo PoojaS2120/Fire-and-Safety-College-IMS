@@ -21,6 +21,7 @@ app.get('/health', (req, res) => {
 // --- ROUTES ---
 app.use('/api/v1/auth', require('./modules/auth/routes/authRoutes'));
 app.use('/api/v1/users', require('./modules/users/routes/userRoutes'));
+app.use('/api/v1/library', require('./modules/library/routes/libraryRoutes'));
 
 // Global Error Handler
 app.use((err, req, res, next) => {
