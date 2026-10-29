@@ -3,16 +3,15 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const { verifyToken } = require('../../../middlewares/auth');
 
-// POST /api/v1/auth/login
+// Public Routes
 router.post('/login', authController.login);
+router.post('/refresh', authController.refresh);
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
 
-// GET /api/v1/auth/me (Example of a protected route)
-router.get('/me', verifyToken, (req, res) => {
-  res.status(200).json({ 
-    success: true, 
-    message: 'You accessed a protected route', 
-    user: req.user 
-  });
-});
+// Protected Routes (Require Token)
+router.post('/logout', verifyToken, authController.logout);
+router.get('/me', verifyToken, authController.getMe);
+router.put('/change-password', verifyToken, authController.changePassword);
 
 module.exports = router;

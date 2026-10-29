@@ -12,7 +12,10 @@ const userSchema = new mongoose.Schema({
     required: true 
   },
   is_active: { type: Boolean, default: true },
-  must_change_password: { type: Boolean, default: false }
+  must_change_password: { type: Boolean, default: false },
+
+  resetPasswordToken: String,
+  resetPasswordExpire: Date
 }, { timestamps: true });
 
 // FIXED: Removed 'next' because the function is async
