@@ -10,7 +10,7 @@ const bookCategorySchema = new mongoose.Schema({
   },
   description: { 
     type: String, 
-    maxlength: [200, 'Description cannot exceed 200 characters'], 
+    maxlength: [300, 'Description cannot exceed 300 characters'],
     default: null 
   }
 }, { timestamps: true });
