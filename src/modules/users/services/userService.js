@@ -30,7 +30,14 @@ exports.getUserById = async (id) => {
 
 // Update User Details
 exports.updateUser = async (id, updateData) => {
-  const user = await User.findByIdAndUpdate(id, updateData, { new: true, runValidators: true }).select('-password');
+ const user = await User.findByIdAndUpdate(
+  id,
+  updateData,
+  {
+    returnDocument: 'after',
+    runValidators: true
+  }
+).select('-password');
   if (!user) throw { statusCode: 404, message: 'User not found' };
   return user;
 };

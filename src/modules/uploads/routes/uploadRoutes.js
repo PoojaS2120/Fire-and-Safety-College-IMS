@@ -17,5 +17,10 @@ router.get('/', uploadController.getMyUploads);
 
 // Download a file owned by the current user.
 router.get('/:id/download', uploadController.downloadFile);
+// Replace an existing uploaded file.
+router.put('/:id', upload.single('file'), uploadController.reuploadFile);
+
+// Delete an uploaded file.
+router.delete('/:id', uploadController.deleteFile);
 
 module.exports = router;

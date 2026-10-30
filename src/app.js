@@ -28,7 +28,8 @@ app.use('/api/v1/auth', require('./modules/auth/routes/authRoutes'));
 app.use('/api/v1/users', require('./modules/users/routes/userRoutes'));
 app.use('/api/v1/uploads', require('./modules/uploads/routes/uploadRoutes'));
 app.use('/api/v1/courses', require('./modules/courses/routes/courseRoutes'));
-
+app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
+app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
