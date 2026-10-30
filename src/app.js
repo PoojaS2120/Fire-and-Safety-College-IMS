@@ -8,6 +8,7 @@ const connectDB = require('./config/db');
 // Connect to Database
 connectDB();
 
+// Initialize Express
 const app = express();
 
 // Middleware
@@ -23,9 +24,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// --- ROUTES ---
+// API Routes
 app.use('/api/v1/auth', require('./modules/auth/routes/authRoutes'));
 app.use('/api/v1/users', require('./modules/users/routes/userRoutes'));
+app.use('/api/v1/library', require('./modules/library/routes/libraryRoutes'));
 app.use('/api/v1/uploads', require('./modules/uploads/routes/uploadRoutes'));
 app.use('/api/v1/courses', require('./modules/courses/routes/courseRoutes'));
 app.use('/api/v1/audit-logs', require('./modules/audit/routes/auditRoutes'));
@@ -87,5 +89,5 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Export application
+// Export Express App
 module.exports = app;
