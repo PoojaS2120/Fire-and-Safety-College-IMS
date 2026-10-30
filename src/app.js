@@ -32,6 +32,7 @@ app.use('/api/v1/uploads', require('./modules/uploads/routes/uploadRoutes'));
 app.use('/api/v1/courses', require('./modules/courses/routes/courseRoutes'));
 app.use('/api/v1/audit-logs', require('./modules/audit/routes/auditRoutes'));
 app.use('/api/v1/fees', require('./modules/fees/routes/feeRoutes'));
+app.use('/api/v1/faculty-assignments', require('./modules/faculty/routes/facultyRoutes'));
 
 // Global Error Handler
 app.use((err, req, res, next) => {
