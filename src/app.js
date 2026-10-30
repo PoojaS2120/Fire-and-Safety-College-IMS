@@ -1,3 +1,4 @@
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -29,10 +30,16 @@ app.use('/api/v1/users', require('./modules/users/routes/userRoutes'));
 app.use('/api/v1/library', require('./modules/library/routes/libraryRoutes'));
 app.use('/api/v1/uploads', require('./modules/uploads/routes/uploadRoutes'));
 app.use('/api/v1/courses', require('./modules/courses/routes/courseRoutes'));
+
+// Routes from main branch
 app.use('/api/v1/audit-logs', require('./modules/audit/routes/auditRoutes'));
 app.use('/api/v1/fees', require('./modules/fees/routes/feeRoutes'));
 app.use('/api/v1/faculty-assignments', require('./modules/faculty/routes/facultyRoutes'));
 app.use('/api/v1/notices', require('./modules/notices/routes/noticeRoutes'));
+
+// Routes from Ritz branch
+app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
+app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
 
 // Global Error Handler
 app.use((err, req, res, next) => {
