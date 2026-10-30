@@ -5,12 +5,12 @@ exports.createUserSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
   // Updated to strictly use office_staff
-  role: Joi.string().valid('office_staff', 'faculty', 'librarian').required(),
+  role: Joi.string().valid('office_staff', 'faculty', 'librarian','student').required(),
   phone: Joi.string().optional()
 });
 
 exports.updateUserSchema = Joi.object({
   name: Joi.string().optional(),
   phone: Joi.string().optional(),
-  role: Joi.string().valid('office_staff', 'faculty', 'librarian').optional()
+  role: Joi.string().valid('office_staff', 'faculty', 'librarian', 'student').optional()
 });
