@@ -32,7 +32,7 @@ exports.importData = async (req, res, next) => {
 
     const rows = importExportService.parseFile(req.file.buffer);
 
-    const result = await config.importHandler(rows);
+    const result = await config.importHandler(rows, req.user.id);
 
     return res.status(200).json({
       success: true,
