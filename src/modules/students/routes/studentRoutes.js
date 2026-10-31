@@ -24,8 +24,11 @@ router.get('/:id', studentController.getStudentById);
 
 // PUT /api/v1/students/:id
 router.put('/:id', studentController.updateStudent);
-
+// PUT /api/v1/students/:id/stage
+router.put('/:id/stage', studentController.updateStudentStage);
 // PATCH /api/v1/students/:id/status
 router.patch('/:id/status', studentController.updateStudentStatus);
+// GET /api/v1/students/:id/stage-history
+router.get('/:id/stage-history', studentController.getStudentStageHistory);
 
 module.exports = router;

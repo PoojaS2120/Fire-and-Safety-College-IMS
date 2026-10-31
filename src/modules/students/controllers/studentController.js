@@ -5,6 +5,7 @@ const {
   createStudentSchema,
   updateStudentSchema,
   updateStudentStatusSchema,
+  updateStudentStageSchema,
   listStudentsSchema,
 } = require('../validations/studentValidation');
 
@@ -117,6 +118,42 @@ exports.updateStudentStatus = async (req, res, next) => {
       success: true,
       message: 'Student status updated successfully.',
       data: student,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+// UPDATE STUDENT LIFECYCLE STAGE
+exports.updateStudentStage = async (req, res, next) => {
+  try {
+    const data = validate(updateStudentStageSchema, req.body, res);
+    if (!data) return;
+
+    const student = await studentService.updateStudentStage(
+      req.params.id,
+      data,
+      req.user.id
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Student lifecycle stage updated successfully.',
+      data: student,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+// GET STUDENT LIFECYCLE STAGE HISTORY
+exports.getStudentStageHistory = async (req, res, next) => {
+  try {
+    const history = await studentService.getStudentStageHistory(
+      req.params.id
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: history,
     });
   } catch (error) {
     next(error);

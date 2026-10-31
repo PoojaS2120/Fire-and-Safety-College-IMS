@@ -1,3 +1,4 @@
+
 const Joi = require('joi');
 
 const objectId = Joi.string().hex().length(24);
@@ -5,8 +6,18 @@ const objectId = Joi.string().hex().length(24);
 const GENDERS = ['male', 'female', 'other'];
 
 const LIFECYCLE_STAGES = [
-  'enquiry', 'admission', 'documents', 'fees', 'material', 
-  'schedule', 'class_test', 'exam', 'exam_form', 'test', 'result', 'tc_lc',
+  'enquiry',
+  'admission',
+  'documents',
+  'fees',
+  'material',
+  'schedule',
+  'class_test',
+  'exam',
+  'exam_form',
+  'test',
+  'result',
+  'tc_lc',
 ];
 
 const STAGE_STATUSES = ['pending', 'in_progress', 'completed', 'blocked'];
@@ -61,3 +72,22 @@ exports.listStudentsSchema = Joi.object({
   courseId: objectId.optional(),
   batchId: objectId.optional(),
 }).unknown(false);
+
+// UPDATE STUDENT LIFECYCLE STAGE
+exports.updateStudentStageSchema = Joi.object({
+  lifecycle_stage: Joi.string()
+    .valid(...LIFECYCLE_STAGES)
+    .required(),
+
+  stage_status: Joi.string()
+    .valid(...STAGE_STATUSES)
+    .required(),
+
+  remarks: Joi.string()
+    .trim()
+    .max(500)
+    .allow('', null)
+    .optional(),
+})
+  .min(1)
+  .unknown(false);
