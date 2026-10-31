@@ -1,3 +1,7 @@
+const mongoose = require('mongoose');
+const Student = require('../../students/models/Student');
+const PaymentAllocation = require('../models/PaymentAllocation');
+const auditService = require('../../audit/services/auditService');
 const StudentFee = require('../models/StudentFee');
 const FeeComponent = require('../../courses/models/FeeComponent');
 const Payment = require('../models/Payment');
@@ -109,50 +113,188 @@ exports.checkExamEligibility = async (studentId) => {
 
 // ================= 3. PAYMENTS & RECEIPTS =================
 
-exports.recordPayment = async (studentId, amount, mode, reference_no, staffId) => {
-  const year = new Date().getFullYear();
-  const seq = await Sequence.getNextSequence(`receipt_no_${year}`);
-  const receiptNo = `RCPT-${year}-${String(seq).padStart(5, '0')}`;
 
-  // 1. Create payment record
-  const payment = await Payment.create({
-    student_id: studentId,
-    amount,
-    mode,
-    reference_no,
-    receipt_no: receiptNo,
-    recorded_by: staffId
-  });
 
-  // 2. Update the StudentFee Ledger
-  let remainingAmount = amount;
-  const pendingFees = await StudentFee.find({ student_id: studentId, status: { $ne: 'paid' } }).sort({ createdAt: 1 });
+exports.recordPayment = async (
+  studentId,
+  amount,
+  mode,
+  reference_no,
+  staffId,
+  paymentDate = new Date(),
+  ip = null
+) => {
+  const paymentAmount = Math.round(Number(amount) * 100) / 100;
 
-  // Safety check: If they didn't generate the ledger, we just record the payment but don't allocate it
-  if (pendingFees.length === 0) {
-    console.warn("⚠️ Payment recorded but no pending StudentFee ledger was found to allocate to.");
-    return payment;
+  if (!mongoose.Types.ObjectId.isValid(studentId)) {
+    throw { statusCode: 400, message: 'Invalid student ID' };
   }
 
-  for (let fee of pendingFees) {
-    if (remainingAmount <= 0) break;
-
-    const balanceForThisFee = fee.amount_due - fee.amount_paid;
-    const amountToApply = Math.min(balanceForThisFee, remainingAmount);
-
-    fee.amount_paid += amountToApply;
-    remainingAmount -= amountToApply;
-
-    if (fee.amount_paid >= fee.amount_due) {
-      fee.status = 'paid';
-    } else if (fee.amount_paid > 0) {
-      fee.status = 'partial';
-    }
-    await fee.save();
+  if (!mongoose.Types.ObjectId.isValid(staffId)) {
+    throw { statusCode: 400, message: 'Invalid staff ID' };
   }
 
-  return payment;
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    throw { statusCode: 400, message: 'Payment amount must be greater than zero' };
+  }
+
+  if (!['cash', 'upi', 'bank', 'cheque'].includes(mode)) {
+    throw { statusCode: 400, message: 'Invalid payment mode' };
+  }
+
+  const parsedPaymentDate = new Date(paymentDate);
+
+  if (Number.isNaN(parsedPaymentDate.getTime())) {
+    throw { statusCode: 400, message: 'Invalid payment date' };
+  }
+
+  const session = await mongoose.startSession();
+  let result;
+
+  try {
+    await session.withTransaction(async () => {
+
+      // 1. Verify student exists.
+      const student = await Student.findById(studentId).session(session);
+
+      if (!student) {
+        throw {
+          statusCode: 404,
+          message: 'Student not found'
+        };
+      }
+
+      // 2. Fetch outstanding fee ledger entries.
+      const pendingFees = await StudentFee.find({
+        student_id: studentId,
+        status: { $in: ['pending', 'partial'] }
+      })
+        .sort({ createdAt: 1, _id: 1 })
+        .session(session);
+
+      if (pendingFees.length === 0) {
+        throw {
+          statusCode: 400,
+          message: 'No outstanding fee ledger found for this student'
+        };
+      }
+
+      // 3. Calculate total outstanding balance.
+      const totalOutstanding = pendingFees.reduce((total, fee) => {
+        return total + Math.round(
+          (Number(fee.amount_due) - Number(fee.amount_paid)) * 100
+        );
+      }, 0) / 100;
+
+      if (paymentAmount > totalOutstanding) {
+        throw {
+          statusCode: 400,
+          message: `Payment exceeds outstanding balance of Rs. ${totalOutstanding}`
+        };
+      }
+
+      // 4. Generate unique receipt number inside transaction.
+      const year = parsedPaymentDate.getFullYear();
+
+      const seq = await Sequence.getNextSequence(
+        `receipt_no_${year}`,
+        session
+      );
+
+      const receiptNo = `RCPT-${year}-${String(seq).padStart(5, '0')}`;
+
+      // 5. Create payment record.
+      const [payment] = await Payment.create(
+        [{
+          student_id: studentId,
+          amount: paymentAmount,
+          payment_date: parsedPaymentDate,
+          mode,
+          reference_no: reference_no || null,
+          receipt_no: receiptNo,
+          created_by: staffId
+        }],
+        { session }
+      );
+
+      // 6. Allocate payment to outstanding fee components.
+      let remainingAmount = Math.round(paymentAmount * 100);
+      const allocations = [];
+
+      for (const fee of pendingFees) {
+        if (remainingAmount <= 0) break;
+
+        const outstanding = Math.round(
+          (Number(fee.amount_due) - Number(fee.amount_paid)) * 100
+        );
+
+        if (outstanding <= 0) continue;
+
+        const amountToApply = Math.min(outstanding, remainingAmount);
+
+        fee.amount_paid = Math.round(
+          (Number(fee.amount_paid) * 100 + amountToApply)
+        ) / 100;
+
+        if (fee.amount_paid >= fee.amount_due) {
+          fee.status = 'paid';
+        } else {
+          fee.status = 'partial';
+        }
+
+        await fee.save({ session });
+
+        allocations.push({
+          payment_id: payment._id,
+          student_fee_id: fee._id,
+          amount: amountToApply / 100
+        });
+
+        remainingAmount -= amountToApply;
+      }
+
+      // 7. Ensure the complete payment was allocated.
+      if (remainingAmount !== 0) {
+        throw {
+          statusCode: 400,
+          message: 'Payment could not be fully allocated'
+        };
+      }
+
+      // 8. Save allocation records.
+      await PaymentAllocation.insertMany(allocations, { session });
+
+      // 9. Record audit log inside the transaction.
+      await auditService.logAction({
+        userId: staffId,
+        action: 'RECORD_PAYMENT',
+        entity: 'Payment',
+        entityId: payment._id,
+        oldValues: null,
+        newValues: {
+          student_id: studentId,
+          amount: paymentAmount,
+          mode,
+          receipt_no: receiptNo,
+          allocations
+        },
+        ip,
+        session
+      });
+
+      result = {
+        payment,
+        allocations
+      };
+    });
+
+    return result;
+
+  } finally {
+    await session.endSession();
+  }
 };
+
 
 exports.generateReceiptPDF = async (paymentId) => {
   // 3. Fixed Population: 'full_name' instead of 'name' because it references the Student model
