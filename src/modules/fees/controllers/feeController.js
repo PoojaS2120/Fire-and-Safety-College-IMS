@@ -77,17 +77,53 @@ exports.checkEligibility = async (req, res, next) => {
 };
 
 // 4. Record Payment
+
+// 4. Record Payment
 exports.recordPayment = async (req, res, next) => {
   try {
-    const { studentId, amount, mode, reference_no } = req.body;
-    if (!studentId || !amount || !mode) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    const {
+      studentId,
+      amount,
+      mode,
+      reference_no,
+      payment_date
+    } = req.body;
+
+    // Required field validation
+    if (!studentId || amount === undefined || !mode) {
+      return res.status(400).json({
+        success: false,
+        message: 'studentId, amount and mode are required'
+      });
     }
 
-    const payment = await feeService.recordPayment(studentId, amount, mode, reference_no, req.user.id);
-    res.status(201).json({ success: true, message: 'Payment recorded', data: payment });
-  } catch (err) { next(err); }
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Amount must be a valid number greater than zero'
+      });
+    }
+
+    const payment = await feeService.recordPayment(
+      studentId,
+      amount,
+      mode,
+      reference_no,
+      req.user.id,
+      payment_date || new Date(),
+      req.ip
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Payment recorded successfully',
+      data: payment
+    });
+  } catch (err) {
+    next(err);
+  }
 };
+
 
 // 5. Download Receipt PDF
 exports.downloadReceipt = async (req, res, next) => {

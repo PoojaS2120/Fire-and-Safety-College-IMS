@@ -1,14 +1,72 @@
+
 const mongoose = require('mongoose');
 
-const paymentSchema = new mongoose.Schema({
-  // FIXED: Changed ref from 'User' to 'Student'
-  student_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
-  amount: { type: Number, required: true },
-  mode: { type: String, enum: ['cash', 'upi', 'bank', 'cheque'], required: true },
-  reference_no: { type: String }, 
-  receipt_no: { type: String, unique: true, required: true }, 
-  recorded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  status: { type: String, enum: ['active', 'cancelled'], default: 'active' }
-}, { timestamps: true });
+const paymentSchema = new mongoose.Schema(
+  {
+    student_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Student',
+      required: true,
+    },
+
+    amount: {
+      type: Number,
+      required: true,
+      min: 0.01,
+    },
+
+    payment_date: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+
+    mode: {
+      type: String,
+      enum: ['cash', 'upi', 'bank', 'cheque'],
+      required: true,
+    },
+
+    reference_no: {
+      type: String,
+      trim: true,
+      maxlength: 60,
+      default: null,
+    },
+
+    receipt_no: {
+      type: String,
+      unique: true,
+      required: true,
+      trim: true,
+    },
+
+    status: {
+      type: String,
+      enum: ['active', 'cancelled'],
+      default: 'active',
+      required: true,
+    },
+
+    created_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+
+    cancelled_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    cancel_reason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+  },
+  { timestamps: true }
+);
 
 module.exports = mongoose.model('Payment', paymentSchema);
