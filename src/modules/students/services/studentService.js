@@ -20,14 +20,21 @@ function validateObjectId(id, fieldName = 'student ID') {
 }
 
 // Validate course and batch assignment
-async function validateAssignments(courseId, batchId) {
+async function validateAssignments(courseId, batchId, session = null) {
   if (!courseId) {
     throw createError(400, 'Course is required.');
   }
 
   validateObjectId(courseId, 'course ID');
 
-  const course = await Course.findById(courseId);
+  let courseQuery = Course.findById(courseId);
+
+  if (session) {
+    courseQuery = courseQuery.session(session);
+  }
+
+  const course = await courseQuery;
+
   if (!course) {
     throw createError(404, 'Course not found.');
   }
@@ -38,7 +45,14 @@ async function validateAssignments(courseId, batchId) {
 
   if (batchId) {
     validateObjectId(batchId, 'batch ID');
-    const batch = await Batch.findById(batchId);
+
+    let batchQuery = Batch.findById(batchId);
+
+    if (session) {
+      batchQuery = batchQuery.session(session);
+    }
+
+    const batch = await batchQuery;
 
     if (!batch) {
       throw createError(404, 'Batch not found.');
@@ -49,7 +63,10 @@ async function validateAssignments(courseId, batchId) {
     }
 
     if (batch.course_id.toString() !== courseId.toString()) {
-      throw createError(400, 'Selected batch does not belong to the selected course.');
+      throw createError(
+        400,
+        'Selected batch does not belong to the selected course.'
+      );
     }
   }
 }
@@ -58,43 +75,78 @@ async function validateAssignments(courseId, batchId) {
 exports.createStudent = async (data, adminId) => {
   validateObjectId(adminId, 'creator user ID');
 
-  // 1. Check if student with this ID already exists
-  const existingStudent = await Student.findOne({ student_id: data.student_id });
-  if (existingStudent) {
-    throw createError(409, 'Student ID is already registered.');
+  const session = await mongoose.startSession();
+
+  try {
+    let createdStudent;
+
+    await session.withTransaction(async () => {
+      const existingStudent = await Student.findOne({
+        student_id: data.student_id,
+      }).session(session);
+
+      if (existingStudent) {
+        throw createError(409, 'Student ID is already registered.');
+      }
+
+      const syntheticEmail = `${data.phone}@ims.com`;
+
+      const existingUser = await User.findOne({
+        email: syntheticEmail,
+      }).session(session);
+
+      if (existingUser) {
+        throw createError(
+          400,
+          'A student with this phone number already exists.'
+        );
+      }
+
+      await validateAssignments(
+        data.course_id,
+        data.batch_id,
+        session
+      );
+
+      // Create login account
+      const newUser = new User({
+        name: data.full_name,
+        email: syntheticEmail,
+        password: '123456',
+        phone: data.phone,
+        role: 'student',
+        must_change_password: true,
+      });
+
+      await newUser.save({ session });
+
+      // Create student profile
+      const student = new Student({
+        ...data,
+        email: data.email || null,
+        batch_id: data.batch_id || null,
+        user_id: newUser._id,
+        created_by: adminId,
+      });
+
+      await student.save({ session });
+
+      createdStudent = student;
+    });
+
+    return createdStudent;
+  } catch (error) {
+    if (error.code === 11000) {
+      throw createError(
+        409,
+        'Student ID or phone number is already registered.'
+      );
+    }
+
+    throw error;
+  } finally {
+    await session.endSession();
   }
-
-  // 2. Check if a user with this phone number already exists
-  const syntheticEmail = `${data.phone}@ims.com`;
-  const existingUser = await User.findOne({ email: syntheticEmail });
-  
-  if (existingUser) {
-    throw createError(400, 'A student with this phone number already exists.');
-  }
-
-  // 3. Validate Course and Batch
-  await validateAssignments(data.course_id, data.batch_id);
-
-  // 4. Auto-Create the User Login Account
-  const newUser = await User.create({
-    name: data.full_name,
-    email: syntheticEmail,
-    password: '123456', 
-    phone: data.phone,
-    role: 'student',
-    must_change_password: true 
-  });
-
-  // 5. Create the Student Profile
-  const student = await Student.create({
-    ...data,
-    email: data.email || null,
-    batch_id: data.batch_id || null,
-    user_id: newUser._id, // Link the auto-created user
-    created_by: adminId,
-  });
-
-  return student;
 };
 
 // ================= LIST STUDENTS =================
