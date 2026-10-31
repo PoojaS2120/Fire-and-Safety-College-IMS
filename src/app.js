@@ -35,7 +35,7 @@ app.use('/api/v1/users', require('./modules/users/routes/userRoutes'));
 app.use('/api/v1/library', require('./modules/library/routes/libraryRoutes'));
 app.use('/api/v1/uploads', require('./modules/uploads/routes/uploadRoutes'));
 app.use('/api/v1/courses', require('./modules/courses/routes/courseRoutes'));
-
+app.use('/api/v1/tc-lc', require('./modules/tclc/routes/tclcRoutes'));
 // Main branch routes
 app.use('/api/v1/audit-logs', require('./modules/audit/routes/auditRoutes'));
 app.use('/api/v1/fees', require('./modules/fees/routes/feeRoutes'));
