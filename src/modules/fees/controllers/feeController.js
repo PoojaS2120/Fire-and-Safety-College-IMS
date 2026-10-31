@@ -51,3 +51,46 @@ exports.downloadReceipt = async (req, res, next) => {
     pdfStream.pipe(res);
   } catch (err) { next(err); }
 };
+// 6. Pending Fees
+exports.getPendingFees = async (req, res, next) => {
+  try {
+    const pending = await feeService.getPendingFeesList();
+    res.status(200).json({ success: true, data: pending });
+  } catch (err) { next(err); }
+};
+
+// 7. Cancel Payment
+exports.cancelPayment = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+    if (!reason) return res.status(400).json({ success: false, message: 'Cancel reason is required' });
+
+    const result = await feeService.cancelPayment(req.params.paymentId, reason, req.user.id, req.ip);
+    res.status(200).json({ success: true, message: result.message });
+  } catch (err) { next(err); }
+};
+
+// 8. STUDENT APP: Get Own Fees
+exports.getMyFees = async (req, res, next) => {
+  try {
+    const Student = require('../../students/models/Student');
+    // Get student profile using the user ID from the token
+    const student = await Student.findOne({ user_id: req.user.id });
+    if (!student) return res.status(404).json({ success: false, message: 'Student profile not found' });
+
+    const summary = await feeService.getFeeSummary(student._id);
+    res.status(200).json({ success: true, data: summary });
+  } catch (err) { next(err); }
+};
+
+// 9. STUDENT APP: Get Own Payments
+exports.getMyPayments = async (req, res, next) => {
+  try {
+    const Student = require('../../students/models/Student');
+    const student = await Student.findOne({ user_id: req.user.id });
+    if (!student) return res.status(404).json({ success: false, message: 'Student profile not found' });
+
+    const payments = await require('../models/Payment').find({ student_id: student._id }).sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: payments });
+  } catch (err) { next(err); }
+};

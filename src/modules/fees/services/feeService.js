@@ -145,3 +145,51 @@ exports.generateReceiptPDF = async (paymentId) => {
 
   return doc; 
 };
+// ================= 4. PENDING FEES LIST =================
+exports.getPendingFeesList = async () => {
+  return await StudentFee.find({ status: { $ne: 'paid' } })
+    .populate('student_id', 'full_name phone student_id')
+    .populate('course_id', 'name');
+};
+
+// ================= 5. CANCEL PAYMENT =================
+exports.cancelPayment = async (paymentId, reason, adminId, ip) => {
+  const payment = await Payment.findById(paymentId);
+  if (!payment) throw { statusCode: 404, message: 'Payment not found' };
+  if (payment.status === 'cancelled') throw { statusCode: 400, message: 'Payment is already cancelled' };
+
+  // 1. Mark payment as cancelled
+  payment.status = 'cancelled';
+  payment.cancel_reason = reason;
+  payment.cancelled_by = adminId;
+  await payment.save();
+
+  // 2. Reverse the allocation from StudentFee
+  let amountToReverse = payment.amount;
+  const paidFees = await StudentFee.find({ student_id: payment.student_id, amount_paid: { $gt: 0 } }).sort({ updatedAt: -1 });
+
+  for (let fee of paidFees) {
+    if (amountToReverse <= 0) break;
+    
+    const reversibleAmount = Math.min(fee.amount_paid, amountToReverse);
+    fee.amount_paid -= reversibleAmount;
+    amountToReverse -= reversibleAmount;
+
+    if (fee.amount_paid === 0) fee.status = 'pending';
+    else if (fee.amount_paid < fee.amount_due) fee.status = 'partial';
+    await fee.save();
+  }
+
+  // 3. Log to Audit
+  await auditService.logAction({
+    userId: adminId,
+    action: 'CANCEL_PAYMENT',
+    entity: 'Payment',
+    entityId: payment._id,
+    oldValues: { status: 'active', amount: payment.amount },
+    newValues: { status: 'cancelled', reason },
+    ip
+  });
+
+  return { message: 'Payment cancelled and ledger reversed successfully' };
+};
