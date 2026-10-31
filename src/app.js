@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -46,6 +45,12 @@ app.use('/api/v1/faculty-assignments', require('./modules/faculty/routes/faculty
 app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
 app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
 app.use('/api/v1/notices', require('./modules/notices/routes/noticeRoutes'));
+
+// Class Schedules - B33
+app.use(
+  '/api/v1/classschedules',
+  require('./modules/classschedules/routes/classScheduleRoutes')
+);
 
 // Global Import/Export Routes
 app.use(
