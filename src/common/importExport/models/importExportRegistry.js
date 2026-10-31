@@ -15,8 +15,8 @@ const STUDENT_COLUMNS = [
   'guardian_name',
   'guardian_phone',
   'qualification',
-  'course_id',
-  'batch_id',
+  'course_name',
+  'batch_name',
   'admitted_on',
 ];
 
