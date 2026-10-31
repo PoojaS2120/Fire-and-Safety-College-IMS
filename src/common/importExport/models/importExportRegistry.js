@@ -24,6 +24,7 @@ const importExportRegistry = {
   library: {
     books: {
       model: Book,
+
       importFields: [
         'Code',
         'Title',
@@ -32,6 +33,7 @@ const importExportRegistry = {
         'Copies',
         'Status',
       ],
+
       columns: [
         'Code',
         'Title',
@@ -40,6 +42,7 @@ const importExportRegistry = {
         'Copies',
         'Status',
       ],
+
       importHandler: bookImportExportHandler.importBooks,
       exportHandler: bookImportExportHandler.exportBooks,
     },

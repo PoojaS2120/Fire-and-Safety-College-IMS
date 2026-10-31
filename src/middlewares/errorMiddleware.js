@@ -1,15 +1,24 @@
-
 const multer = require('multer');
 
 const errorMiddleware = (err, req, res, next) => {
-  console.error('[ERROR]', err.message);
+  console.error('[ERROR DETAILS]', {
+    message: err.message,
+    name: err.name,
+    code: err.code,
+    field: err.field,
+    url: req.originalUrl,
+  });
 
   // Multer errors
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
+      const isVideoUpload = req.originalUrl.includes('/uploads/videos');
+
       return res.status(413).json({
         success: false,
-        message: 'File size exceeds the 5 MB limit.',
+        message: isVideoUpload
+          ? 'Video exceeds the 5 GB upload limit.'
+          : 'File size exceeds the 5 MB limit.',
       });
     }
 
@@ -23,19 +32,22 @@ const errorMiddleware = (err, req, res, next) => {
     if (err.code === 'LIMIT_UNEXPECTED_FILE') {
       return res.status(400).json({
         success: false,
-        message: 'Unexpected file field. Use the "file" field.',
+        message: `Unexpected file field: ${err.field || 'missing'}. Use the "file" field.`,
       });
     }
 
     return res.status(400).json({
       success: false,
-      message: 'File upload failed.',
+      message: err.message,
+      code: err.code,
+      field: err.field || null,
     });
   }
 
   // Unsupported file types
   const unsupportedMessages = [
     'Only PDF, JPEG, PNG and WEBP files are allowed.',
+    'Only MP4, MOV and WEBM videos are allowed.',
     'Only XLSX and CSV files are allowed.',
     'Invalid file type. Upload a valid XLSX or CSV file.',
   ];

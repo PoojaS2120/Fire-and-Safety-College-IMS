@@ -24,15 +24,18 @@ const uploadSchema = new mongoose.Schema(
         'image/jpeg',
         'image/png',
         'image/webp',
+        'video/mp4',
+        'video/quicktime',
+        'video/webm',
       ],
     },
 
-    size: {
-      type: Number,
-      required: true,
-      min: 1,
-      max: 5 * 1024 * 1024,
-    },
+   size: {
+  type: Number,
+  required: true,
+  min: 1,
+  max: 5 * 1024 * 1024 * 1024, // 5 GB
+},
 
     uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,
