@@ -105,11 +105,25 @@ const deleteUpload = async (uploadId, userId) => {
 
   return true;
 };
+const getUploadForAuthorizedDownload = async (uploadId) => {
+  const upload = await Upload.findById(uploadId).select('-__v');
+
+  if (!upload) {
+    const error = new Error('File not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const filePath = getSafeFilePath(upload.storedName);
+
+  return { upload, filePath };
+};
 
 module.exports = {
   saveUpload,
   getUserUploads,
   getUploadForUser,
+  getUploadForAuthorizedDownload,
   replaceUpload,
   deleteUpload,
 };
