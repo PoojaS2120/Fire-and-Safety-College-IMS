@@ -28,7 +28,6 @@ async function validateAssignments(courseId, batchId) {
   validateObjectId(courseId, 'course ID');
 
   const course = await Course.findById(courseId);
-
   if (!course) {
     throw createError(404, 'Course not found.');
   }
@@ -39,7 +38,6 @@ async function validateAssignments(courseId, batchId) {
 
   if (batchId) {
     validateObjectId(batchId, 'batch ID');
-
     const batch = await Batch.findById(batchId);
 
     if (!batch) {
@@ -51,69 +49,59 @@ async function validateAssignments(courseId, batchId) {
     }
 
     if (batch.course_id.toString() !== courseId.toString()) {
-      throw createError(
-        400,
-        'Selected batch does not belong to the selected course.'
-      );
+      throw createError(400, 'Selected batch does not belong to the selected course.');
     }
   }
 }
 
-// CREATE STUDENT
-exports.createStudent = async (data, userId) => {
-  validateObjectId(userId, 'creator user ID');
+// ================= CREATE STUDENT (Auto-User Creation) =================
+exports.createStudent = async (data, adminId) => {
+  validateObjectId(adminId, 'creator user ID');
 
-  const user = await User.findById(data.user_id);
-
-  if (!user) {
-    throw createError(404, 'Student login user not found.');
-  }
-
-  if (user.role !== 'student') {
-    throw createError(400, 'The linked user must have the student role.');
-  }
-
-  const existingStudent = await Student.findOne({
-    $or: [
-      { student_id: data.student_id },
-      { user_id: data.user_id },
-    ],
-  });
-
+  // 1. Check if student with this ID already exists
+  const existingStudent = await Student.findOne({ student_id: data.student_id });
   if (existingStudent) {
-    throw createError(
-      409,
-      'Student ID or linked user is already registered.'
-    );
+    throw createError(409, 'Student ID is already registered.');
   }
 
+  // 2. Check if a user with this phone number already exists
+  const syntheticEmail = `${data.phone}@ims.com`;
+  const existingUser = await User.findOne({ email: syntheticEmail });
+  
+  if (existingUser) {
+    throw createError(400, 'A student with this phone number already exists.');
+  }
+
+  // 3. Validate Course and Batch
   await validateAssignments(data.course_id, data.batch_id);
 
+  // 4. Auto-Create the User Login Account
+  const newUser = await User.create({
+    name: data.full_name,
+    email: syntheticEmail,
+    password: '123456', 
+    phone: data.phone,
+    role: 'student',
+    must_change_password: true 
+  });
+
+  // 5. Create the Student Profile
   const student = await Student.create({
     ...data,
     email: data.email || null,
     batch_id: data.batch_id || null,
-    created_by: userId,
+    user_id: newUser._id, // Link the auto-created user
+    created_by: adminId,
   });
 
   return student;
 };
 
-// LIST STUDENTS WITH SEARCH, FILTERS AND PAGINATION
+// ================= LIST STUDENTS =================
 exports.getStudents = async (query) => {
-  const {
-    page = 1,
-    limit = 10,
-    q,
-    status,
-    lifecycle_stage,
-    stage_status,
-    courseId,
-    batchId,
-  } = query;
+  const { page = 1, limit = 10, q, status, lifecycle_stage, stage_status, courseId, batchId } = query;
 
   const filter = {};
-
   if (status) filter.status = status;
   if (lifecycle_stage) filter.lifecycle_stage = lifecycle_stage;
   if (stage_status) filter.stage_status = stage_status;
@@ -122,7 +110,6 @@ exports.getStudents = async (query) => {
 
   if (q) {
     const escapedQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
     filter.$or = [
       { student_id: { $regex: escapedQuery, $options: 'i' } },
       { full_name: { $regex: escapedQuery, $options: 'i' } },
@@ -147,19 +134,13 @@ exports.getStudents = async (query) => {
 
   return {
     students,
-    meta: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-    },
+    meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 };
 
-// GET STUDENT BY ID
+// ================= GET STUDENT BY ID =================
 exports.getStudentById = async (id) => {
   validateObjectId(id);
-
   const student = await Student.findById(id)
     .populate('user_id', 'name email phone is_active')
     .populate('course_id', 'name duration status')
@@ -169,14 +150,12 @@ exports.getStudentById = async (id) => {
   if (!student) {
     throw createError(404, 'Student not found.');
   }
-
   return student;
 };
 
-// UPDATE STUDENT PROFILE
+// ================= UPDATE STUDENT PROFILE =================
 exports.updateStudent = async (id, data) => {
   validateObjectId(id);
-
   const existing = await Student.findById(id);
 
   if (!existing) {
@@ -184,12 +163,10 @@ exports.updateStudent = async (id, data) => {
   }
 
   const courseId = Object.prototype.hasOwnProperty.call(data, 'course_id')
-    ? data.course_id
-    : existing.course_id.toString();
+    ? data.course_id : existing.course_id.toString();
 
   const batchId = Object.prototype.hasOwnProperty.call(data, 'batch_id')
-    ? data.batch_id
-    : existing.batch_id?.toString();
+    ? data.batch_id : existing.batch_id?.toString();
 
   await validateAssignments(courseId, batchId);
 
@@ -198,29 +175,24 @@ exports.updateStudent = async (id, data) => {
   if (Object.prototype.hasOwnProperty.call(updateData, 'email')) {
     updateData.email = updateData.email || null;
   }
-
   if (Object.prototype.hasOwnProperty.call(updateData, 'batch_id')) {
     updateData.batch_id = updateData.batch_id || null;
   }
 
+  // FIXED: Removed the duplicate, broken syntax here
   return Student.findByIdAndUpdate(
     id,
     { $set: updateData },
-    {
-      returnDocument: 'after',
-      runValidators: true
-    }
+    { returnDocument: 'after', runValidators: true }
   )
     .populate('user_id', 'name email phone is_active')
     .populate('course_id', 'name duration status')
     .populate('batch_id', 'name start_date end_date status');
 };
 
-
-// UPDATE STUDENT STATUS
+// ================= UPDATE STUDENT STATUS =================
 exports.updateStudentStatus = async (id, status) => {
   validateObjectId(id);
-
   const session = await mongoose.startSession();
 
   try {
@@ -228,35 +200,25 @@ exports.updateStudentStatus = async (id, status) => {
 
     await session.withTransaction(async () => {
       const student = await Student.findById(id).session(session);
-
       if (!student) {
         throw createError(404, 'Student not found.');
       }
 
-      // Decide linked user account status
       const isUserActive = status === 'active';
 
-      // Update linked User account
+      // FIXED: Removed the duplicate, broken syntax here
       const updatedUser = await User.findByIdAndUpdate(
         student.user_id,
-        {
-          $set: { is_active: isUserActive },
-        },
-{
-  returnDocument: 'after',
-  runValidators: true,
-  session,
-}
+        { $set: { is_active: isUserActive } },
+        { returnDocument: 'after', runValidators: true, session }
       );
 
       if (!updatedUser) {
         throw createError(404, 'Linked student user not found.');
       }
 
-      // Update Student profile status
       student.status = status;
       await student.save({ session });
-
       updatedStudent = student;
     });
 
@@ -264,6 +226,7 @@ exports.updateStudentStatus = async (id, status) => {
   } finally {
     await session.endSession();
   }
+
 };
 // UPDATE STUDENT LIFECYCLE STAGE AND RECORD HISTORY
 exports.updateStudentStage = async (id, data, userId) => {
@@ -329,4 +292,5 @@ exports.getStudentStageHistory = async (id) => {
   return StudentStageHistory.find({ student_id: id })
     .populate('changed_by', 'name email')
     .sort({ changed_at: -1 });
+
 };
