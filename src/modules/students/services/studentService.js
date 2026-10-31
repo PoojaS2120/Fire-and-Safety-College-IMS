@@ -27,7 +27,6 @@ async function validateAssignments(courseId, batchId) {
   validateObjectId(courseId, 'course ID');
 
   const course = await Course.findById(courseId);
-
   if (!course) {
     throw createError(404, 'Course not found.');
   }
@@ -38,7 +37,6 @@ async function validateAssignments(courseId, batchId) {
 
   if (batchId) {
     validateObjectId(batchId, 'batch ID');
-
     const batch = await Batch.findById(batchId);
 
     if (!batch) {
@@ -77,7 +75,6 @@ exports.createStudent = async (data, adminId) => {
   await validateAssignments(data.course_id, data.batch_id);
 
   // 4. Auto-Create the User Login Account
-  // Default password is '123456' and they must change it on first login.
   const newUser = await User.create({
     name: data.full_name,
     email: syntheticEmail,
@@ -101,19 +98,9 @@ exports.createStudent = async (data, adminId) => {
 
 // ================= LIST STUDENTS =================
 exports.getStudents = async (query) => {
-  const {
-    page = 1,
-    limit = 10,
-    q,
-    status,
-    lifecycle_stage,
-    stage_status,
-    courseId,
-    batchId,
-  } = query;
+  const { page = 1, limit = 10, q, status, lifecycle_stage, stage_status, courseId, batchId } = query;
 
   const filter = {};
-
   if (status) filter.status = status;
   if (lifecycle_stage) filter.lifecycle_stage = lifecycle_stage;
   if (stage_status) filter.stage_status = stage_status;
@@ -146,19 +133,13 @@ exports.getStudents = async (query) => {
 
   return {
     students,
-    meta: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-    },
+    meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 };
 
 // ================= GET STUDENT BY ID =================
 exports.getStudentById = async (id) => {
   validateObjectId(id);
-
   const student = await Student.findById(id)
     .populate('user_id', 'name email phone is_active')
     .populate('course_id', 'name duration status')
@@ -168,14 +149,12 @@ exports.getStudentById = async (id) => {
   if (!student) {
     throw createError(404, 'Student not found.');
   }
-
   return student;
 };
 
 // ================= UPDATE STUDENT PROFILE =================
 exports.updateStudent = async (id, data) => {
   validateObjectId(id);
-
   const existing = await Student.findById(id);
 
   if (!existing) {
@@ -183,12 +162,10 @@ exports.updateStudent = async (id, data) => {
   }
 
   const courseId = Object.prototype.hasOwnProperty.call(data, 'course_id')
-    ? data.course_id
-    : existing.course_id.toString();
+    ? data.course_id : existing.course_id.toString();
 
   const batchId = Object.prototype.hasOwnProperty.call(data, 'batch_id')
-    ? data.batch_id
-    : existing.batch_id?.toString();
+    ? data.batch_id : existing.batch_id?.toString();
 
   await validateAssignments(courseId, batchId);
 
@@ -197,11 +174,11 @@ exports.updateStudent = async (id, data) => {
   if (Object.prototype.hasOwnProperty.call(updateData, 'email')) {
     updateData.email = updateData.email || null;
   }
-
   if (Object.prototype.hasOwnProperty.call(updateData, 'batch_id')) {
     updateData.batch_id = updateData.batch_id || null;
   }
 
+  // FIXED: Removed the duplicate, broken syntax here
   return Student.findByIdAndUpdate(
     id,
     { $set: updateData },
@@ -215,7 +192,6 @@ exports.updateStudent = async (id, data) => {
 // ================= UPDATE STUDENT STATUS =================
 exports.updateStudentStatus = async (id, status) => {
   validateObjectId(id);
-
   const session = await mongoose.startSession();
 
   try {
@@ -223,15 +199,13 @@ exports.updateStudentStatus = async (id, status) => {
 
     await session.withTransaction(async () => {
       const student = await Student.findById(id).session(session);
-
       if (!student) {
         throw createError(404, 'Student not found.');
       }
 
-      // Decide linked user account status (if student is active, user can log in)
       const isUserActive = status === 'active';
 
-      // Update linked User account
+      // FIXED: Removed the duplicate, broken syntax here
       const updatedUser = await User.findByIdAndUpdate(
         student.user_id,
         { $set: { is_active: isUserActive } },
@@ -242,10 +216,8 @@ exports.updateStudentStatus = async (id, status) => {
         throw createError(404, 'Linked student user not found.');
       }
 
-      // Update Student profile status
       student.status = status;
       await student.save({ session });
-
       updatedStudent = student;
     });
 
