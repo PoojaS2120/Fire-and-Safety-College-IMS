@@ -163,3 +163,21 @@ exports.listStudentsSchema = Joi.object({
   batchId: objectId.optional(),
 })
   .unknown(false);
+// UPDATE STUDENT LIFECYCLE STAGE
+exports.updateStudentStageSchema = Joi.object({
+  lifecycle_stage: Joi.string()
+    .valid(...LIFECYCLE_STAGES)
+    .required(),
+
+  stage_status: Joi.string()
+    .valid(...STAGE_STATUSES)
+    .required(),
+
+  remarks: Joi.string()
+    .trim()
+    .max(500)
+    .allow('', null)
+    .optional(),
+})
+  .min(1)
+  .unknown(false);

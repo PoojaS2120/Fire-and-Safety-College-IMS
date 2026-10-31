@@ -1,4 +1,4 @@
-
+const StudentStageHistory = require('../models/StudentStageHistory');
 const mongoose = require('mongoose');
 
 const Student = require('../models/Student');
@@ -264,4 +264,69 @@ exports.updateStudentStatus = async (id, status) => {
   } finally {
     await session.endSession();
   }
+};
+// UPDATE STUDENT LIFECYCLE STAGE AND RECORD HISTORY
+exports.updateStudentStage = async (id, data, userId) => {
+  validateObjectId(id);
+  validateObjectId(userId, 'user ID');
+
+  const session = await mongoose.startSession();
+
+  try {
+    let updatedStudent;
+
+    await session.withTransaction(async () => {
+      const student = await Student.findById(id).session(session);
+
+      if (!student) {
+        throw createError(404, 'Student not found.');
+      }
+
+      // Capture previous lifecycle stage before updating
+      const previousStage = student.lifecycle_stage;
+
+      // Update lifecycle information
+      student.lifecycle_stage = data.lifecycle_stage;
+      student.stage_status = data.stage_status;
+
+      await student.save({ session });
+
+      // Create stage history record
+      await StudentStageHistory.create(
+        [
+          {
+            student_id: student._id,
+            from_stage: previousStage,
+            to_stage: data.lifecycle_stage,
+            stage_status: data.stage_status,
+            changed_by: userId,
+            changed_at: new Date(),
+            remarks: data.remarks || null,
+          },
+        ],
+        { session }
+      );
+
+      updatedStudent = student;
+    });
+
+    return updatedStudent;
+  } finally {
+    await session.endSession();
+  }
+};
+
+// GET STUDENT LIFECYCLE STAGE HISTORY
+exports.getStudentStageHistory = async (id) => {
+  validateObjectId(id);
+
+  const student = await Student.findById(id).select('_id');
+
+  if (!student) {
+    throw createError(404, 'Student not found.');
+  }
+
+  return StudentStageHistory.find({ student_id: id })
+    .populate('changed_by', 'name email')
+    .sort({ changed_at: -1 });
 };

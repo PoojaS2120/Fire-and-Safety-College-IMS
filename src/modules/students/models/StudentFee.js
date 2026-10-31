@@ -58,4 +58,6 @@ studentFeeSchema.index(
   { unique: true }
 );
 
-module.exports = mongoose.model('StudentFee', studentFeeSchema);
+module.exports =
+  mongoose.models.StudentFee ||
+  mongoose.model('StudentFee', studentFeeSchema);
