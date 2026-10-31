@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const uploadService = require('../services/uploadService');
 const { validateFileContent } = require('../middleware/validateFileContent');
+const { validateVideoContent } = require('../middleware/validateVideoContent');
 
 // Upload a new file.
 exports.uploadFile = async (req, res, next) => {
@@ -134,6 +135,50 @@ exports.deleteFile = async (req, res, next) => {
       message: 'File deleted successfully.',
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+// Upload a video through the centralized Upload module.
+exports.uploadVideoFile = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      const error = new Error('Please select a video to upload.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const validContent = await validateVideoContent(req.file);
+
+    if (!validContent) {
+      const error = new Error(
+        'Invalid video content. Please upload a valid MP4, MOV or WEBM video.'
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const upload = await uploadService.saveUpload(
+      req.file,
+      req.user.id
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Video uploaded successfully.',
+      data: {
+        id: upload._id,
+        originalName: upload.originalName,
+        mimeType: upload.mimeType,
+        size: upload.size,
+        createdAt: upload.createdAt,
+      },
+    });
+  } catch (error) {
+    if (req.file?.path) {
+      await fs.promises.unlink(req.file.path).catch(() => {});
+    }
+
     next(error);
   }
 };
