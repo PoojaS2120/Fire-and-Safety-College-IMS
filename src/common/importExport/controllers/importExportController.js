@@ -1,4 +1,3 @@
-
 const importExportService = require('../services/importExportService');
 const importExportRegistry = require('../models/importExportRegistry');
 
@@ -12,32 +11,33 @@ exports.importData = async (req, res, next) => {
     if (!config) {
       return res.status(404).json({
         success: false,
-        message: 'Import is not configured for this module.'
+        message: 'Import is not configured for this module.',
       });
     }
 
     if (typeof config.importHandler !== 'function') {
       return res.status(501).json({
         success: false,
-        message: 'Import handler is not implemented for this module.'
+        message: 'Import handler is not implemented for this module.',
       });
     }
 
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
-        message: 'Please upload an Excel or CSV file using the file field.'
+        message: 'Please upload an Excel or CSV file using the file field.',
       });
     }
 
     const rows = importExportService.parseFile(req.file.buffer);
 
+    // Pass authenticated user ID to the import handler.
     const result = await config.importHandler(rows, req.user.id);
 
     return res.status(200).json({
       success: true,
       message: 'Import process completed.',
-      data: result
+      data: result,
     });
   } catch (error) {
     next(error);
@@ -55,14 +55,14 @@ exports.exportData = async (req, res, next) => {
     if (!config) {
       return res.status(404).json({
         success: false,
-        message: 'Export is not configured for this module.'
+        message: 'Export is not configured for this module.',
       });
     }
 
     if (typeof config.exportHandler !== 'function') {
       return res.status(501).json({
         success: false,
-        message: 'Export handler is not implemented for this module.'
+        message: 'Export handler is not implemented for this module.',
       });
     }
 
@@ -71,7 +71,7 @@ exports.exportData = async (req, res, next) => {
     if (!Array.isArray(result)) {
       throw {
         statusCode: 500,
-        message: 'Export handler must return an array of records.'
+        message: 'Export handler must return an array of records.',
       };
     }
 
@@ -80,7 +80,7 @@ exports.exportData = async (req, res, next) => {
     if (!Array.isArray(columns) || !columns.length) {
       throw {
         statusCode: 500,
-        message: 'Export columns are not configured.'
+        message: 'Export columns are not configured.',
       };
     }
 
@@ -91,7 +91,6 @@ exports.exportData = async (req, res, next) => {
     );
 
     const extension = format === 'csv' ? 'csv' : 'xlsx';
-
     const filename = `${moduleName}_${entityName}_export.${extension}`;
 
     res.setHeader(
@@ -123,7 +122,7 @@ exports.downloadTemplate = async (req, res, next) => {
     if (!config) {
       return res.status(404).json({
         success: false,
-        message: 'Template is not configured for this module.'
+        message: 'Template is not configured for this module.',
       });
     }
 
@@ -132,7 +131,7 @@ exports.downloadTemplate = async (req, res, next) => {
     if (!Array.isArray(columns) || !columns.length) {
       throw {
         statusCode: 500,
-        message: 'Template columns are not configured.'
+        message: 'Template columns are not configured.',
       };
     }
 

@@ -7,10 +7,10 @@ const { upload } = require('../middleware/uploadMiddleware');
 const { verifyToken } = require('../../../middlewares/auth');
 const { authorize } = require('../../../middlewares/authorize');
 
+// All import/export APIs require authentication.
 router.use(verifyToken);
 
-// Students: only super_admin and office_staff.
-// Library: retain existing librarian access.
+// Role-based authorization
 const authorizeImportExport = (req, res, next) => {
   const allowedRoles =
     req.params.moduleName === 'students'
@@ -20,6 +20,7 @@ const authorizeImportExport = (req, res, next) => {
   return authorize(...allowedRoles)(req, res, next);
 };
 
+// Import Excel/CSV
 router.post(
   '/:moduleName/:entityName/import',
   authorizeImportExport,
@@ -27,12 +28,14 @@ router.post(
   controller.importData
 );
 
+// Export Excel/CSV
 router.get(
   '/:moduleName/:entityName/export',
   authorizeImportExport,
   controller.exportData
 );
 
+// Download import template
 router.get(
   '/:moduleName/:entityName/template',
   authorizeImportExport,
