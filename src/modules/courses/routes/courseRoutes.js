@@ -33,6 +33,7 @@ router.patch('/:courseId/status', verifyToken, authorize('super_admin'), courseC
 // --- FEE COMPONENTS ---
 router.post('/:courseId/fee-components', verifyToken, authorize('super_admin'), courseController.addFeeComponent);
 router.get('/:courseId/fee-components', verifyToken, courseController.getCourseFees);
+router.put('/fee-components/:feeId', verifyToken, authorize('super_admin'), courseController.updateFeeComponent);
 
 // --- BATCHES ---
 router.post('/:courseId/batches', verifyToken, authorize('super_admin'), courseController.createBatch);

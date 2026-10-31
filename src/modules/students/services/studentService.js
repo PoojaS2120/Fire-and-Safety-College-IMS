@@ -232,10 +232,11 @@ exports.updateStudent = async (id, data) => {
   }
 
   // FIXED: Removed the duplicate, broken syntax here
-  return Student.findByIdAndUpdate(
+   return Student.findByIdAndUpdate(
     id,
     { $set: updateData },
     { returnDocument: 'after', runValidators: true }
+  
   )
     .populate('user_id', 'name email phone is_active')
     .populate('course_id', 'name duration status')

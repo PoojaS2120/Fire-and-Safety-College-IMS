@@ -15,14 +15,16 @@ exports.getCourses = async () => {
   return await Course.find().populate('created_by', 'name');
 };
 
-// NEW: Update Course
 exports.updateCourse = async (courseId, updateData) => {
-  const course = await Course.findByIdAndUpdate(courseId, updateData, { new: true, runValidators: true });
+  const course = await Course.findByIdAndUpdate(
+    courseId, 
+    updateData, 
+    { returnDocument: 'after', runValidators: true }
+  );
   if (!course) throw { statusCode: 404, message: 'Course not found' };
   return course;
 };
 
-// NEW: Toggle Course Status (Soft Delete)
 exports.toggleCourseStatus = async (courseId) => {
   const course = await Course.findById(courseId);
   if (!course) throw { statusCode: 404, message: 'Course not found' };
@@ -45,6 +47,16 @@ exports.getCourseFees = async (courseId) => {
   return await FeeComponent.find({ course_id: courseId, status: 'active' });
 };
 
+exports.updateFeeComponent = async (feeId, updateData) => {
+  const fee = await FeeComponent.findByIdAndUpdate(
+    feeId, 
+    updateData, 
+    { returnDocument: 'after', runValidators: true }
+  );
+  if (!fee) throw { statusCode: 404, message: 'Fee Component not found' };
+  return fee;
+};
+
 // ================= BATCHES =================
 exports.createBatch = async (courseId, batchData) => {
   const course = await Course.findById(courseId);
@@ -58,14 +70,16 @@ exports.getBatchesByCourse = async (courseId) => {
   return await Batch.find({ course_id: courseId, status: 'active' });
 };
 
-// NEW: Update Batch
 exports.updateBatch = async (batchId, updateData) => {
-  const batch = await Batch.findByIdAndUpdate(batchId, updateData, { new: true, runValidators: true });
+  const batch = await Batch.findByIdAndUpdate(
+    batchId, 
+    updateData, 
+    { returnDocument: 'after', runValidators: true }
+  );
   if (!batch) throw { statusCode: 404, message: 'Batch not found' };
   return batch;
 };
 
-// NEW: Toggle Batch Status (Soft Delete)
 exports.toggleBatchStatus = async (batchId) => {
   const batch = await Batch.findById(batchId);
   if (!batch) throw { statusCode: 404, message: 'Batch not found' };
