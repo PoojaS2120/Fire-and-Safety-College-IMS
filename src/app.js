@@ -47,6 +47,12 @@ app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
 //   require('./modules/classschedules/routes/classScheduleRoutes')
 // );
 
+// Material Management - B32
+app.use(
+  '/api/v1/materials',
+  require('./modules/materials/routes/materialRoutes')
+);
+
 // Global Import/Export Routes
 app.use(
   '/api/v1/import-export',
