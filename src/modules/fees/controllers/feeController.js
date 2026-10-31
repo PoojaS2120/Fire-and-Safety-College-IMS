@@ -1,3 +1,4 @@
+const Student = require('../../students/models/Student');
 const feeService = require('../services/feeService');
 
 // 1. Generate Ledger
@@ -12,17 +13,67 @@ exports.generateLedger = async (req, res, next) => {
 // 2. Get Summary
 exports.getSummary = async (req, res, next) => {
   try {
-    const result = await feeService.getFeeSummary(req.params.studentId);
+    let studentId = req.params.studentId;
+
+    if (req.user.role === 'student') {
+      const student = await Student.findOne({ user_id: req.user.id });
+
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          message: 'Student profile not found'
+        });
+      }
+
+      if (student._id.toString() !== studentId) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not authorized to access this fee summary'
+        });
+      }
+
+      studentId = student._id;
+    }
+
+    const result = await feeService.getFeeSummary(studentId);
+
     res.status(200).json({ success: true, data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 // 3. Check Eligibility
 exports.checkEligibility = async (req, res, next) => {
   try {
-    const result = await feeService.checkExamEligibility(req.params.studentId);
+    let studentId = req.params.studentId;
+
+    if (req.user.role === 'student') {
+      const student = await Student.findOne({ user_id: req.user.id });
+
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          message: 'Student profile not found'
+        });
+      }
+
+      if (student._id.toString() !== studentId) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not authorized to check another student\'s eligibility'
+        });
+      }
+
+      studentId = student._id;
+    }
+
+    const result = await feeService.checkExamEligibility(studentId);
+
     res.status(200).json({ success: true, data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 // 4. Record Payment
@@ -41,15 +92,51 @@ exports.recordPayment = async (req, res, next) => {
 // 5. Download Receipt PDF
 exports.downloadReceipt = async (req, res, next) => {
   try {
-    const pdfStream = await feeService.generateReceiptPDF(req.params.paymentId);
-    
-    // Set headers to download the PDF
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=receipt_${req.params.paymentId}.pdf`);
+    if (req.user.role === 'student') {
+      const Payment = require('../models/Payment');
 
-    // Pipe the PDF stream to the response
+      const student = await Student.findOne({
+        user_id: req.user.id
+      });
+
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          message: 'Student profile not found'
+        });
+      }
+
+      const payment = await Payment.findById(req.params.paymentId);
+
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          message: 'Payment not found'
+        });
+      }
+
+      if (payment.student_id.toString() !== student._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not authorized to access this receipt'
+        });
+      }
+    }
+
+    const pdfStream = await feeService.generateReceiptPDF(
+      req.params.paymentId
+    );
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=receipt_${req.params.paymentId}.pdf`
+    );
+
     pdfStream.pipe(res);
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 // 6. Pending Fees
 exports.getPendingFees = async (req, res, next) => {

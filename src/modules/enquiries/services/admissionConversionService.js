@@ -186,18 +186,19 @@ exports.convertEnquiryToAdmission = async (
       );
 
       // 10. Generate student fee records.
-      const studentFeeRecords = feeComponents.map((component) => ({
-        student_id: student._id,
-        fee_component_id: component._id,
-        fee_name: component.name,
-        total_amount: component.amount,
-        paid_amount: 0,
-        balance_amount: component.amount,
-        required_for_exam: component.required_for_exam,
-        status: 'pending',
-      }));
+const studentFeeRecords = feeComponents.map((component) => ({
+  student_id: student._id,
+  course_id: course._id,
+  fee_component_id: component._id,
+  fee_name: component.name,
+  amount_due: component.amount,
+  amount_paid: 0,
+  due_date: null,
+  required_for_exam: component.required_for_exam,
+  status: 'pending',
+}));
 
-      await StudentFee.insertMany(studentFeeRecords, { session });
+await StudentFee.insertMany(studentFeeRecords, { session });
 
       // 11. Record the initial admission stage.
       await StudentStageHistory.create(
