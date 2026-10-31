@@ -45,6 +45,7 @@ app.use('/api/v1/faculty-assignments', require('./modules/faculty/routes/faculty
 // Ritz branch routes
 app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
 app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
+app.use('/api/v1', require('./modules/documents/routes/documentRoutes'));
 app.use('/api/v1/notices', require('./modules/notices/routes/noticeRoutes'));
 
 // Global Import/Export Routes
