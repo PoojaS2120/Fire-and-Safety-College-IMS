@@ -68,6 +68,14 @@ app.use(
   '/api/v1/materials',
   require('./modules/materials/routes/materialRoutes')
 );
+
+// ClassTest and Mark management 
+app.use(
+  '/api/v1/class-tests',
+  require('./modules/classtests/routes/classTestRoutes')
+);
+
+
 // Global Error Handler
 app.use(errorMiddleware);
 
