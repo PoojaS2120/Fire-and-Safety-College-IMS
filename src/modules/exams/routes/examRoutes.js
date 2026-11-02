@@ -5,6 +5,7 @@ const { verifyToken } = require('../../../middlewares/auth');
 const { authorize } = require('../../../middlewares/authorize');
 
 const examController = require('../controllers/examController');
+const resultController = require('../../results/controllers/resultController');
 
 const router = express.Router();
 
@@ -84,6 +85,32 @@ router.get(
   '/:id/marks/:studentId/history',
   authorize('super_admin', 'faculty'),
   examController.getMarkHistory
+);
+
+
+/* ==========================================
+   B-36: RESULT MANAGEMENT
+========================================== */
+
+// Review exam results
+router.get(
+  '/:id/results',
+  authorize('super_admin', 'faculty'),
+  resultController.reviewResults
+);
+
+// Publish exam results (Super Admin only)
+router.put(
+  '/:id/publish',
+  authorize('super_admin'),
+  resultController.publishResults
+);
+
+// Unpublish exam results (Super Admin only)
+router.put(
+  '/:id/unpublish',
+  authorize('super_admin'),
+  resultController.unpublishResults
 );
 
 module.exports = router;

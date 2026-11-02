@@ -98,6 +98,28 @@ const examSchema = new mongoose.Schema(
       default: 'scheduled',
     },
 
+    // =========================================
+    // B-36: RESULT PUBLICATION MANAGEMENT
+    // =========================================
+
+    result_status: {
+      type: String,
+      enum: ['draft', 'published'],
+      default: 'draft',
+      index: true,
+    },
+
+    published_at: {
+      type: Date,
+      default: null,
+    },
+
+    published_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
     created_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -121,7 +143,6 @@ const examSchema = new mongoose.Schema(
 );
 
 // Validate marks configuration
-
 examSchema.pre('validate', function () {
   if (
     this.max_marks != null &&
@@ -145,7 +166,6 @@ examSchema.pre('validate', function () {
     );
   }
 });
-
 
 // Indexes for faster exam filtering
 examSchema.index({
