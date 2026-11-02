@@ -14,6 +14,12 @@ const paymentSchema = new mongoose.Schema(
       required: true,
       min: 0.01,
     },
+    balance_after: {
+    type: Number,
+    min: 0,
+    required: false,
+    default: null,
+    },
 
     payment_date: {
       type: Date,

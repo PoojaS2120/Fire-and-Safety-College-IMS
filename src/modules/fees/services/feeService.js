@@ -1,3 +1,4 @@
+
 const mongoose = require('mongoose');
 const Student = require('../../students/models/Student');
 const PaymentAllocation = require('../models/PaymentAllocation');
@@ -5,7 +6,7 @@ const auditService = require('../../audit/services/auditService');
 const StudentFee = require('../models/StudentFee');
 const FeeComponent = require('../../courses/models/FeeComponent');
 const Payment = require('../models/Payment');
-const Sequence = require('../../courses/models/Sequence'); 
+const Sequence = require('../../courses/models/Sequence');
 const PDFDocument = require('pdfkit');
 
 // ================= 1. FEE LEDGER =================
@@ -23,7 +24,6 @@ exports.generateFeeLedger = async (studentId, courseId) => {
     };
   }
 
-  // Find existing ledger entries for this student and course
   const existingFees = await StudentFee.find({
     student_id: studentId,
     course_id: courseId
@@ -33,7 +33,6 @@ exports.generateFeeLedger = async (studentId, courseId) => {
     existingFees.map(fee => fee.fee_component_id.toString())
   );
 
-  // Generate entries only for components not already in the ledger
   const newEntries = components
     .filter(comp => !existingComponentIds.has(comp._id.toString()))
     .map(comp => ({
@@ -52,7 +51,6 @@ exports.generateFeeLedger = async (studentId, courseId) => {
     await StudentFee.insertMany(newEntries);
   }
 
-  // Return the complete ledger
   return await StudentFee.find({
     student_id: studentId,
     course_id: courseId
@@ -108,12 +106,13 @@ exports.checkExamEligibility = async (studentId) => {
     };
   }
 
-  return { eligible: true, message: 'Eligible to fill exam form' };
+  return {
+    eligible: true,
+    message: 'Eligible to fill exam form'
+  };
 };
 
 // ================= 3. PAYMENTS & RECEIPTS =================
-
-
 
 exports.recordPayment = async (
   studentId,
@@ -135,7 +134,10 @@ exports.recordPayment = async (
   }
 
   if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
-    throw { statusCode: 400, message: 'Payment amount must be greater than zero' };
+    throw {
+      statusCode: 400,
+      message: 'Payment amount must be greater than zero'
+    };
   }
 
   if (!['cash', 'upi', 'bank', 'cheque'].includes(mode)) {
@@ -264,7 +266,26 @@ exports.recordPayment = async (
       // 8. Save allocation records.
       await PaymentAllocation.insertMany(allocations, { session });
 
-      // 9. Record audit log inside the transaction.
+      // 9. Calculate remaining balance after this payment.
+      const updatedFees = await StudentFee.find({
+        student_id: studentId
+      }).session(session);
+
+      const balanceAfterPaise = updatedFees.reduce((total, fee) => {
+        const outstanding = Math.round(
+          (Number(fee.amount_due) - Number(fee.amount_paid)) * 100
+        );
+
+        return total + Math.max(0, outstanding);
+      }, 0);
+
+      const balanceAfter = balanceAfterPaise / 100;
+
+      // 10. Store historical balance in payment record.
+      payment.balance_after = balanceAfter;
+      await payment.save({ session });
+
+      // 11. Record audit log inside the transaction.
       await auditService.logAction({
         userId: staffId,
         action: 'RECORD_PAYMENT',
@@ -276,6 +297,7 @@ exports.recordPayment = async (
           amount: paymentAmount,
           mode,
           receipt_no: receiptNo,
+          balance_after: balanceAfter,
           allocations
         },
         ip,
@@ -295,84 +317,278 @@ exports.recordPayment = async (
   }
 };
 
+// ================= 4. RECEIPT JSON DATA =================
+
+exports.getReceiptData = async (paymentId) => {
+  if (!mongoose.Types.ObjectId.isValid(paymentId)) {
+    throw {
+      statusCode: 400,
+      message: 'Invalid payment ID'
+    };
+  }
+
+  const payment = await Payment.findById(paymentId)
+    .populate({
+      path: 'student_id',
+      select: 'student_id full_name email course_id batch_id',
+      populate: [
+        {
+          path: 'course_id',
+          select: 'name'
+        },
+        {
+          path: 'batch_id',
+          select: 'name'
+        }
+      ]
+    });
+
+  if (!payment) {
+    throw {
+      statusCode: 404,
+      message: 'Payment not found'
+    };
+  }
+
+  const student = payment.student_id;
+
+  if (!student) {
+    throw {
+      statusCode: 404,
+      message: 'Student details not found for this payment'
+    };
+  }
+
+  const allocations = await PaymentAllocation.find({
+    payment_id: payment._id
+  }).populate('student_fee_id', 'fee_name');
+
+  return {
+    receipt_no: payment.receipt_no,
+    payment_id: payment._id,
+    payment_date: payment.payment_date,
+    student: {
+      student_id: student.student_id,
+      full_name: student.full_name,
+      email: student.email
+    },
+    course: student.course_id
+      ? student.course_id.name
+      : null,
+    batch: student.batch_id
+      ? student.batch_id.name
+      : null,
+    amount: payment.amount,
+    mode: payment.mode,
+    reference_no: payment.reference_no,
+    balance_after: payment.balance_after ?? null,
+    status: payment.status,
+    allocations: allocations.map(allocation => ({
+      fee_name: allocation.student_fee_id
+        ? allocation.student_fee_id.fee_name
+        : null,
+      amount: allocation.amount
+    }))
+  };
+};
+
+// ================= 5. RECEIPT PDF =================
 
 exports.generateReceiptPDF = async (paymentId) => {
-  // 3. Fixed Population: 'full_name' instead of 'name' because it references the Student model
-  const payment = await Payment.findById(paymentId).populate('student_id', 'full_name email');
-  
-  if (!payment) throw { statusCode: 404, message: 'Payment not found' };
+  const receipt = await exports.getReceiptData(paymentId);
 
-  // If the student_id wasn't populated correctly, or the student was deleted, we fall back
-  const studentName = payment.student_id?.full_name || 'Unknown Student';
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 50
+  });
 
-  const doc = new PDFDocument({ margin: 50 });
+  // College heading.
+  doc
+    .fontSize(20)
+    .font('Helvetica-Bold')
+    .text('Fire & Safety College', { align: 'center' });
 
-  // Header
-  doc.fontSize(20).text('Fire & Safety College', { align: 'center' });
-  doc.fontSize(14).text('Official Fee Receipt', { align: 'center' });
-  doc.moveDown();
+  doc
+    .fontSize(14)
+    .font('Helvetica')
+    .text('Official Fee Receipt', { align: 'center' });
 
-  // Details
-  doc.fontSize(12).text(`Receipt No: ${payment.receipt_no}`);
-  doc.text(`Date: ${new Date(payment.createdAt).toLocaleDateString()}`);
-  doc.text(`Student Name: ${studentName}`); // Used the safe variable here
-  doc.text(`Payment Mode: ${payment.mode.toUpperCase()}`);
-  if (payment.reference_no) doc.text(`Reference: ${payment.reference_no}`);
-  doc.moveDown();
-
-  // Amount
-  doc.fontSize(16).text(`Amount Received: Rs. ${payment.amount}`, { underline: true });
   doc.moveDown(2);
 
-  doc.fontSize(10).text('This is a computer-generated receipt. No signature required.', { align: 'center', color: 'grey' });
+  // Receipt details.
+  doc.fontSize(11);
 
-  return doc; 
+  doc.text(`Receipt Number: ${receipt.receipt_no}`);
+  doc.text(
+    `Payment Date: ${new Date(receipt.payment_date).toLocaleDateString('en-IN')}`
+  );
+  doc.text(`Payment Status: ${receipt.status.toUpperCase()}`);
+
+  doc.moveDown();
+
+  // Student details.
+  doc
+    .font('Helvetica-Bold')
+    .text('STUDENT DETAILS');
+
+  doc.font('Helvetica');
+
+  doc.text(`Student Name: ${receipt.student.full_name}`);
+  doc.text(`Student ID: ${receipt.student.student_id}`);
+  doc.text(`Course: ${receipt.course || 'Not available'}`);
+  doc.text(`Batch: ${receipt.batch || 'Not available'}`);
+
+  doc.moveDown();
+
+  // Payment details.
+  doc
+    .font('Helvetica-Bold')
+    .text('PAYMENT DETAILS');
+
+  doc.font('Helvetica');
+
+  doc.text(`Payment Mode: ${receipt.mode.toUpperCase()}`);
+
+  if (receipt.reference_no) {
+    doc.text(`Reference Number: ${receipt.reference_no}`);
+  }
+
+  doc.moveDown();
+
+  // Allocations.
+  if (receipt.allocations.length > 0) {
+    doc
+      .font('Helvetica-Bold')
+      .text('FEE ALLOCATION');
+
+    doc.font('Helvetica');
+
+    receipt.allocations.forEach(allocation => {
+      doc.text(
+        `${allocation.fee_name || 'Fee component'}: Rs. ${allocation.amount.toFixed(2)}`
+      );
+    });
+
+    doc.moveDown();
+  }
+
+  // Amount received.
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(16)
+    .text(`Amount Received: Rs. ${Number(receipt.amount).toFixed(2)}`);
+
+  doc.moveDown();
+
+  // Historical balance.
+  doc.fontSize(12);
+
+  if (receipt.balance_after !== null) {
+    doc.text(
+      `Balance After Payment: Rs. ${Number(receipt.balance_after).toFixed(2)}`
+    );
+  } else {
+    doc.text('Balance After Payment: Not available for this historical payment');
+  }
+
+  doc.moveDown(3);
+
+  doc
+    .fontSize(10)
+    .font('Helvetica')
+    .text(
+      'This is a computer-generated receipt. No signature required.',
+      { align: 'center', color: 'grey' }
+    );
+
+  // Finalize PDF stream.
+  doc.end();
+
+  return doc;
 };
-// ================= 4. PENDING FEES LIST =================
+
+// ================= 6. PENDING FEES LIST =================
+
 exports.getPendingFeesList = async () => {
-  return await StudentFee.find({ status: { $ne: 'paid' } })
+  return await StudentFee.find({
+    status: { $ne: 'paid' }
+  })
     .populate('student_id', 'full_name phone student_id')
     .populate('course_id', 'name');
 };
 
-// ================= 5. CANCEL PAYMENT =================
+// ================= 7. CANCEL PAYMENT =================
+
 exports.cancelPayment = async (paymentId, reason, adminId, ip) => {
   const payment = await Payment.findById(paymentId);
-  if (!payment) throw { statusCode: 404, message: 'Payment not found' };
-  if (payment.status === 'cancelled') throw { statusCode: 400, message: 'Payment is already cancelled' };
 
-  // 1. Mark payment as cancelled
+  if (!payment) {
+    throw {
+      statusCode: 404,
+      message: 'Payment not found'
+    };
+  }
+
+  if (payment.status === 'cancelled') {
+    throw {
+      statusCode: 400,
+      message: 'Payment is already cancelled'
+    };
+  }
+
+  // 1. Mark payment as cancelled.
   payment.status = 'cancelled';
   payment.cancel_reason = reason;
   payment.cancelled_by = adminId;
+
   await payment.save();
 
-  // 2. Reverse the allocation from StudentFee
+  // 2. Reverse the allocation from StudentFee.
   let amountToReverse = payment.amount;
-  const paidFees = await StudentFee.find({ student_id: payment.student_id, amount_paid: { $gt: 0 } }).sort({ updatedAt: -1 });
 
-  for (let fee of paidFees) {
+  const paidFees = await StudentFee.find({
+    student_id: payment.student_id,
+    amount_paid: { $gt: 0 }
+  }).sort({ updatedAt: -1 });
+
+  for (const fee of paidFees) {
     if (amountToReverse <= 0) break;
-    
-    const reversibleAmount = Math.min(fee.amount_paid, amountToReverse);
+
+    const reversibleAmount = Math.min(
+      fee.amount_paid,
+      amountToReverse
+    );
+
     fee.amount_paid -= reversibleAmount;
     amountToReverse -= reversibleAmount;
 
-    if (fee.amount_paid === 0) fee.status = 'pending';
-    else if (fee.amount_paid < fee.amount_due) fee.status = 'partial';
+    if (fee.amount_paid === 0) {
+      fee.status = 'pending';
+    } else if (fee.amount_paid < fee.amount_due) {
+      fee.status = 'partial';
+    }
+
     await fee.save();
   }
 
-  // 3. Log to Audit
+  // 3. Log to Audit.
   await auditService.logAction({
     userId: adminId,
     action: 'CANCEL_PAYMENT',
     entity: 'Payment',
     entityId: payment._id,
-    oldValues: { status: 'active', amount: payment.amount },
-    newValues: { status: 'cancelled', reason },
+    oldValues: {
+      status: 'active',
+      amount: payment.amount
+    },
+    newValues: {
+      status: 'cancelled',
+      reason
+    },
     ip
   });
 
-  return { message: 'Payment cancelled and ledger reversed successfully' };
+  return {
+    message: 'Payment cancelled and ledger reversed successfully'
+  };
 };

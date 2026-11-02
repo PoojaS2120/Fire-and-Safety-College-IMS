@@ -75,6 +75,11 @@ app.use(
   require('./modules/classtests/routes/classTestRoutes')
 );
 
+// Exams and Marks Management - B35
+app.use(
+  '/api/v1/exams',
+  require('./modules/exams/routes/examRoutes')
+);
 
 // Global Error Handler
 app.use(errorMiddleware);
