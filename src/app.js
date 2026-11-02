@@ -40,6 +40,7 @@ app.use('/api/v1/courses', require('./modules/courses/routes/courseRoutes'));
 app.use('/api/v1/tc-lc', require('./modules/tclc/routes/tclcRoutes'));
 
 // Main branch routes
+
 app.use('/api/v1/audit-logs', require('./modules/audit/routes/auditRoutes'));
 app.use('/api/v1/fees', require('./modules/fees/routes/feeRoutes'));
 app.use('/api/v1/faculty-assignments', require('./modules/faculty/routes/facultyRoutes'));
@@ -67,6 +68,13 @@ app.use(
   '/api/v1/materials',
   require('./modules/materials/routes/materialRoutes')
 );
+
+// ClassTest and Mark management 
+app.use(
+  '/api/v1/class-tests',
+  require('./modules/classtests/routes/classTestRoutes')
+);
+
 
 // Global Error Handler
 app.use(errorMiddleware);
