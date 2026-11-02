@@ -2,7 +2,7 @@
 // const jwt = require('jsonwebtoken');
 // const crypto = require('crypto');
 
-// // 1. LOGIN
+// // 1. LOGIN (Staff & Admin)
 // exports.loginUser = async (email, password) => {
 //   const user = await User.findOne({ email });
 //   if (!user) throw { statusCode: 401, message: 'Invalid credentials' };
@@ -12,14 +12,12 @@
 //   const isMatch = await user.matchPassword(password);
 //   if (!isMatch) throw { statusCode: 401, message: 'Invalid credentials' };
 
-//   // Generate Access Token (15m)
 //   const accessToken = jwt.sign(
 //     { id: user._id, role: user.role }, 
 //     process.env.JWT_ACCESS_SECRET, 
 //     { expiresIn: process.env.JWT_ACCESS_TTL }
 //   );
 
-//   // Generate Refresh Token (7 days)
 //   const refreshToken = jwt.sign(
 //     { id: user._id, role: user.role }, 
 //     process.env.JWT_REFRESH_SECRET, 
@@ -33,12 +31,36 @@
 //   };
 // };
 
+// // NEW: 1.5 STUDENT LOGIN (Name + Phone)
+// exports.studentLoginUser = async (name, phone) => {
+//   const syntheticEmail = `${phone}@ims.com`;
+//   const user = await User.findOne({ email: syntheticEmail });
+
+//   if (!user) throw { statusCode: 401, message: 'Invalid phone number' };
+//   if (!user.is_active) throw { statusCode: 403, message: 'Account is deactivated' };
+
+//   // Check if the provided name matches the database record (case insensitive)
+//   if (user.name.toLowerCase() !== name.toLowerCase().trim()) {
+//     throw { statusCode: 401, message: 'Name does not match our records' };
+//   }
+
+//   // Generate Access Token (No password required)
+//   const accessToken = jwt.sign(
+//     { id: user._id, role: user.role }, 
+//     process.env.JWT_ACCESS_SECRET, 
+//     { expiresIn: process.env.JWT_ACCESS_TTL }
+//   );
+
+//   return {
+//     accessToken,
+//     user: { id: user._id, name: user.name, phone: user.phone, role: user.role }
+//   };
+// };
+
 // // 2. REFRESH TOKEN
 // exports.refreshToken = (refreshToken) => {
 //   try {
 //     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    
-//     // Generate new Access Token
 //     const newAccessToken = jwt.sign(
 //       { id: decoded.id, role: decoded.role },
 //       process.env.JWT_ACCESS_SECRET,
@@ -69,14 +91,11 @@
 //   const user = await User.findOne({ email });
 //   if (!user) throw { statusCode: 404, message: 'User not found' };
 
-//   // Generate random token
 //   const resetToken = crypto.randomBytes(20).toString('hex');
 //   user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-//   user.resetPasswordExpire = Date.now() + 30 * 60 * 1000; // 30 mins
+//   user.resetPasswordExpire = Date.now() + 30 * 60 * 1000;
 //   await user.save();
 
-//   // In production, send this via email using Nodemailer. 
-//   // For now, return it so we can test in Postman.
 //   return { resetToken };
 // };
 
@@ -98,6 +117,10 @@
 
 //   return { message: 'Password reset successful' };
 // };
+
+
+
+
 
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
@@ -132,17 +155,20 @@ exports.loginUser = async (email, password) => {
   };
 };
 
-// NEW: 1.5 STUDENT LOGIN (Name + Phone)
-exports.studentLoginUser = async (name, phone) => {
+// 1.5 STUDENT LOGIN (Phone Only)
+exports.studentLoginUser = async (phone) => {
+  // Generate the synthetic email used for student accounts
   const syntheticEmail = `${phone}@ims.com`;
+  
+  // Find the user by the synthetic email
   const user = await User.findOne({ email: syntheticEmail });
 
-  if (!user) throw { statusCode: 401, message: 'Invalid phone number' };
+  if (!user) throw { statusCode: 401, message: 'No student found with this phone number' };
   if (!user.is_active) throw { statusCode: 403, message: 'Account is deactivated' };
 
-  // Check if the provided name matches the database record (case insensitive)
-  if (user.name.toLowerCase() !== name.toLowerCase().trim()) {
-    throw { statusCode: 401, message: 'Name does not match our records' };
+  // Security check: Ensure the user is actually a student
+  if (user.role !== 'student') {
+    throw { statusCode: 403, message: 'This phone number belongs to a staff member. Please use the web portal.' };
   }
 
   // Generate Access Token (No password required)
@@ -152,8 +178,16 @@ exports.studentLoginUser = async (name, phone) => {
     { expiresIn: process.env.JWT_ACCESS_TTL }
   );
 
+  // Generate Refresh Token as well (good practice for mobile apps)
+  const refreshToken = jwt.sign(
+    { id: user._id, role: user.role }, 
+    process.env.JWT_REFRESH_SECRET, 
+    { expiresIn: `${process.env.REFRESH_TTL_DAYS}d` }
+  );
+
   return {
     accessToken,
+    refreshToken,
     user: { id: user._id, name: user.name, phone: user.phone, role: user.role }
   };
 };

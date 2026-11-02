@@ -95,13 +95,14 @@ exports.login = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
-// NEW: 1.5 STUDENT LOGIN (Name + Phone)
 exports.studentLogin = async (req, res, next) => {
   try {
     const { error } = studentLoginSchema.validate(req.body);
     if (error) return res.status(400).json({ success: false, message: error.details[0].message });
 
-    const data = await authService.studentLoginUser(req.body.name, req.body.phone);
+    // CHANGE HERE: Only pass the phone number
+    const data = await authService.studentLoginUser(req.body.phone);
+    
     res.status(200).json({ success: true, message: 'Student login successful', data });
   } catch (error) { next(error); }
 };
