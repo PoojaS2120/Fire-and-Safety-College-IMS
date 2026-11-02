@@ -1,4 +1,3 @@
-
 // const mongoose = require('mongoose');
 // const Student = require('../../students/models/Student');
 // const PaymentAllocation = require('../models/PaymentAllocation');
@@ -156,19 +155,32 @@
 //   try {
 //     await session.withTransaction(async () => {
 
-//       // 1. Verify student exists.
-//       const student = await Student.findById(studentId).session(session);
+//       // 1. Verify student exists. (FIXED: Handles User ID, Student ID, or Fee ID)
+//       let student = await Student.findById(studentId).session(session);
+      
+//       if (!student) {
+//         student = await Student.findOne({ user_id: studentId }).session(session);
+//       }
+
+//       if (!student) {
+//         const feeRecord = await StudentFee.findById(studentId).session(session);
+//         if (feeRecord) {
+//           student = await Student.findById(feeRecord.student_id).session(session);
+//         }
+//       }
 
 //       if (!student) {
 //         throw {
 //           statusCode: 404,
-//           message: 'Student not found'
+//           message: 'Student not found for the provided ID'
 //         };
 //       }
 
+//       const actualStudentId = student._id;
+
 //       // 2. Fetch outstanding fee ledger entries.
 //       const pendingFees = await StudentFee.find({
-//         student_id: studentId,
+//         student_id: actualStudentId,
 //         status: { $in: ['pending', 'partial'] }
 //       })
 //         .sort({ createdAt: 1, _id: 1 })
@@ -208,7 +220,7 @@
 //       // 5. Create payment record.
 //       const [payment] = await Payment.create(
 //         [{
-//           student_id: studentId,
+//           student_id: actualStudentId,
 //           amount: paymentAmount,
 //           payment_date: parsedPaymentDate,
 //           mode,
@@ -268,7 +280,7 @@
 
 //       // 9. Calculate remaining balance after this payment.
 //       const updatedFees = await StudentFee.find({
-//         student_id: studentId
+//         student_id: actualStudentId
 //       }).session(session);
 
 //       const balanceAfterPaise = updatedFees.reduce((total, fee) => {
@@ -293,7 +305,7 @@
 //         entityId: payment._id,
 //         oldValues: null,
 //         newValues: {
-//           student_id: studentId,
+//           student_id: actualStudentId,
 //           amount: paymentAmount,
 //           mode,
 //           receipt_no: receiptNo,
@@ -594,6 +606,7 @@
 // };
 
 
+
 const mongoose = require('mongoose');
 const Student = require('../../students/models/Student');
 const PaymentAllocation = require('../models/PaymentAllocation');
@@ -751,7 +764,7 @@ exports.recordPayment = async (
   try {
     await session.withTransaction(async () => {
 
-      // 1. Verify student exists. (FIXED: Handles User ID, Student ID, or Fee ID)
+      // 1. Verify student exists. (Handles User ID, Student ID, or Fee ID)
       let student = await Student.findById(studentId).session(session);
       
       if (!student) {
@@ -1118,11 +1131,14 @@ exports.generateReceiptPDF = async (paymentId) => {
 // ================= 6. PENDING FEES LIST =================
 
 exports.getPendingFeesList = async () => {
-  return await StudentFee.find({
+  const fees = await StudentFee.find({
     status: { $ne: 'paid' }
   })
     .populate('student_id', 'full_name phone student_id')
     .populate('course_id', 'name');
+
+  // Filter out records where the student was deleted or doesn't exist
+  return fees.filter(fee => fee.student_id !== null);
 };
 
 // ================= 7. CANCEL PAYMENT =================
