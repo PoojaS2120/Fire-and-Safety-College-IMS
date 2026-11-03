@@ -74,7 +74,10 @@ app.use(
   '/api/v1/class-tests',
   require('./modules/classtests/routes/classTestRoutes')
 );
-
+app.use(
+  '/api/v1/student',
+  require('./modules/studentapp/routes/studentAppRoutes')
+);
 
 // Global Error Handler
 app.use(errorMiddleware);
