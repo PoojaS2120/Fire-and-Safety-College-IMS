@@ -7,30 +7,61 @@ const { authorize } = require('../../../middlewares/authorize');
 // All routes require login
 router.use(verifyToken);
 
-// Categories
-router.get('/categories', authorize('super_admin', 'office_staff', 'librarian'), libraryController.listCategories);
+// ---------- CATEGORIES ----------
+router.get(
+  '/categories',
+  authorize('super_admin', 'office_staff', 'librarian', 'student'),
+  libraryController.listCategories
+);
 router.post('/categories', authorize('super_admin', 'librarian'), libraryController.createCategory);
 router.put('/categories/:id', authorize('super_admin', 'librarian'), libraryController.updateCategory);
-// 👇 NEW DELETE ROUTE FOR CATEGORY
 router.delete('/categories/:id', authorize('super_admin'), libraryController.deleteCategory);
 
-// Books
-router.get('/books', authorize('super_admin', 'office_staff', 'librarian'), libraryController.listBooks);
+// ---------- BOOKS ----------
+router.get(
+  '/books',
+  authorize('super_admin', 'office_staff', 'librarian', 'student'),
+  libraryController.listBooks
+);
 router.post('/books', authorize('super_admin', 'librarian'), libraryController.createBook);
-router.get('/books/:id', authorize('super_admin', 'office_staff', 'librarian'), libraryController.getBook);
+router.get(
+  '/books/:id',
+  authorize('super_admin', 'office_staff', 'librarian', 'student'),
+  libraryController.getBook
+);
 router.put('/books/:id', authorize('super_admin', 'librarian'), libraryController.updateBook);
 router.put('/books/:id/status', authorize('super_admin', 'librarian'), libraryController.updateStatus);
-// 👇 NEW DELETE ROUTE FOR BOOK
 router.delete('/books/:id', authorize('super_admin'), libraryController.deleteBook);
 
-// Issues
+// ---------- ISSUES ----------
 router.post('/issues', authorize('super_admin', 'librarian'), libraryController.issueBook);
 router.put('/issues/:id/return', authorize('super_admin', 'librarian'), libraryController.returnBook);
-router.get('/issues', authorize('super_admin', 'office_staff', 'librarian'), libraryController.listIssues);
+router.get(
+  '/issues',
+  authorize('super_admin', 'office_staff', 'librarian'),
+  libraryController.listIssues
+);
 
-// Overdue & History
-router.get('/overdue', authorize('super_admin', 'office_staff', 'librarian'), libraryController.getOverdue);
-router.get('/students/:id/history', authorize('super_admin', 'office_staff', 'librarian', 'student'), libraryController.getStudentHistory);
+// ---------- OVERDUE ----------
+router.get(
+  '/overdue',
+  authorize('super_admin', 'office_staff', 'librarian'),
+  libraryController.getOverdue
+);
 
-// IMPORTANT: Export the router!
+// ---------- STUDENT HISTORY ----------
+// APK-friendly: returns the logged-in student's own history
+router.get(
+  '/my-history',
+  authorize('student'),
+  libraryController.getStudentHistory
+);
+
+// Admin endpoint: view any student's history
+router.get(
+  '/students/:id/history',
+  authorize('super_admin', 'office_staff', 'librarian', 'student'),
+  libraryController.getStudentHistory
+);
+
 module.exports = router;

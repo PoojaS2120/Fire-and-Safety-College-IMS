@@ -4,25 +4,74 @@ const tclcController = require('../controllers/tclcController');
 const { verifyToken } = require('../../../middlewares/auth');
 const { authorize } = require('../../../middlewares/authorize');
 
-// 1. Create Request
-router.post('/', verifyToken, authorize('super_admin', 'office_staff'), tclcController.requestCertificate);
+// ===== SPECIFIC ROUTES FIRST =====
+// Student: view own requests (APK)
+router.get(
+  '/my-requests',
+  verifyToken,
+  authorize('student'),
+  tclcController.getMyRequests
+);
 
-// 2. List Requests (Added)
-router.get('/', verifyToken, authorize('super_admin', 'office_staff'), tclcController.getAllRequests);
+// Check eligibility for any student (before creating request)
+router.get(
+  '/students/:studentId/eligibility',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  tclcController.checkStudentEligibility
+);
 
-// 3. Request Details (Added - Needs custom logic for student access)
-router.get('/:id', verifyToken, tclcController.getRequestDetails);
+// ===== STAFF ROUTES =====
+router.post(
+  '/',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  tclcController.requestCertificate
+);
 
-// 4. Check Eligibility (Added)
-router.get('/:id/eligibility', verifyToken, authorize('super_admin', 'office_staff'), tclcController.checkEligibility);
+router.get(
+  '/',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  tclcController.getAllRequests
+);
 
-// 5. Approve
-router.put('/:id/approve', verifyToken, authorize('super_admin', 'office_staff'), tclcController.approveRequest);
+// ===== PARAMETERIZED ROUTES =====
+router.get(
+  '/:id/eligibility',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  tclcController.checkEligibility
+);
 
-// 6. Reject
-router.put('/:id/reject', verifyToken, authorize('super_admin', 'office_staff'), tclcController.rejectRequest);
+router.put(
+  '/:id/approve',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  tclcController.approveRequest
+);
 
-// 7. Download PDF
-router.get('/:id/pdf', verifyToken, tclcController.downloadPDF);
+router.put(
+  '/:id/reject',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  tclcController.rejectRequest
+);
+
+// Download PDF — staff OR the student who owns it
+router.get(
+  '/:id/pdf',
+  verifyToken,
+  authorize('super_admin', 'office_staff', 'student'),
+  tclcController.downloadPDF
+);
+
+// Request details — staff OR the student who owns it
+router.get(
+  '/:id',
+  verifyToken,
+  authorize('super_admin', 'office_staff', 'student'),
+  tclcController.getRequestDetails
+);
 
 module.exports = router;

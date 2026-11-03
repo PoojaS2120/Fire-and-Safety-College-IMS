@@ -1,4 +1,3 @@
-
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
@@ -17,246 +16,157 @@ function createError(statusCode, message) {
   return error;
 }
 
-async function generateStudentId(year, session) {
-  const counterKey = `FSC-${year}`;
-
-  // Find the highest existing student ID for this year.
-  const existingStudents = await Student.find({
-    student_id: new RegExp(`^FSC-${year}-(\\d+)$`),
-  })
-    .select('student_id')
-    .session(session)
-    .lean();
-
-  const highestExisting = existingStudents.reduce((max, student) => {
-    const match = student.student_id.match(/-(\d+)$/);
-    return Math.max(max, match ? Number(match[1]) : 0);
-  }, 0);
-
-  // Initialize or synchronize the counter with existing student records.
-  await StudentIdCounter.updateOne(
-    { _id: counterKey },
-    { $max: { sequence: highestExisting } },
-    { upsert: true, session }
-  );
-
-  // Atomically reserve the next number.
-  const counter = await StudentIdCounter.findOneAndUpdate(
-    { _id: counterKey },
+async function generateStudentId(year) {
+  const key = `student_id_${year}`;
+  const counter = await StudentIdCounter.findByIdAndUpdate(
+    key,
     { $inc: { sequence: 1 } },
-    { new: true, session }
+    { new: true, upsert: true, setDefaultsOnInsert: true }
   );
-
-  return `${counterKey}-${String(counter.sequence).padStart(4, '0')}`;
+  return `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
 }
 
-exports.convertEnquiryToAdmission = async (
-  enquiryId,
-  admissionData,
-  staffUserId
-) => {
-  if (!mongoose.isValidObjectId(enquiryId)) {
-    throw createError(400, 'Invalid enquiry ID.');
+exports.convertEnquiryToAdmission = async (enquiryId, admissionData, staffUserId) => {
+  if (!mongoose.isValidObjectId(enquiryId)) throw createError(400, 'Invalid enquiry ID.');
+  if (!mongoose.isValidObjectId(staffUserId)) throw createError(400, 'Invalid staff user ID.');
+
+  const enquiry = await Enquiry.findById(enquiryId);
+  if (!enquiry) throw createError(404, 'Enquiry not found.');
+  if (enquiry.status === 'converted' || enquiry.converted_student_id) {
+    throw createError(409, 'This enquiry has already been converted.');
+  }
+  if (enquiry.status === 'closed') throw createError(400, 'Closed enquiries cannot be converted.');
+  if (!enquiry.course_interest_id) {
+    throw createError(400, 'A course must be assigned to the enquiry before conversion.');
   }
 
-  if (!mongoose.isValidObjectId(staffUserId)) {
-    throw createError(400, 'Invalid staff user ID.');
+  const course = await Course.findById(enquiry.course_interest_id);
+  if (!course || course.status !== 'active') {
+    throw createError(400, 'Selected course is not available.');
   }
 
-  const session = await mongoose.startSession();
+  const feeComponents = await FeeComponent.find({ course_id: course._id, status: 'active' });
+  if (feeComponents.length === 0) {
+    throw createError(400, 'No active fee components are configured for this course.');
+  }
 
-  let result;
+  // Use phone override if provided, else use enquiry's phone
+  const phone = (admissionData.phone || enquiry.phone).trim();
+  const fullName = (admissionData.full_name || enquiry.name).trim();
+
+  // Synthetic login email (matches studentService pattern)
+  const syntheticEmail = `${phone}@ims.com`;
+  // Display email (real email stored on student record)
+  const displayEmail = (admissionData.email || enquiry.email || '').trim().toLowerCase() || null;
+
+  const existingUser = await User.findOne({ email: syntheticEmail });
+  if (existingUser) {
+    throw createError(409, 'A student with this phone number already exists.');
+  }
+
+  const temporaryPassword = crypto.randomBytes(12).toString('base64url');
+
+  // Step 1: Create user
+  const user = await User.create({
+    name: fullName,
+    email: syntheticEmail,
+    phone,
+    password: temporaryPassword,
+    role: 'student',
+    is_active: true,
+    must_change_password: true,
+  });
+
+  let student;
+  let studentFeeRecords = [];
 
   try {
-    await session.withTransaction(async () => {
-      // 1. Find and validate the enquiry.
-      const enquiry = await Enquiry.findById(enquiryId).session(session);
+    // Step 2: Student ID
+    const year = new Date().getFullYear();
+    const studentId = await generateStudentId(year);
 
-      if (!enquiry) {
-        throw createError(404, 'Enquiry not found.');
-      }
-
-      if (enquiry.status === 'converted' || enquiry.converted_student_id) {
-        throw createError(409, 'This enquiry has already been converted.');
-      }
-
-      if (enquiry.status === 'closed') {
-        throw createError(400, 'Closed enquiries cannot be converted.');
-      }
-
-      if (!enquiry.course_interest_id) {
-        throw createError(
-          400,
-          'A course must be assigned to the enquiry before conversion.'
-        );
-      }
-
-      // 2. Validate the course.
-      const course = await Course.findById(
-        enquiry.course_interest_id
-      ).session(session);
-
-      if (!course || course.status !== 'active') {
-        throw createError(400, 'Selected course is not available.');
-      }
-
-      // 3. Validate fee components.
-      const feeComponents = await FeeComponent.find({
-        course_id: course._id,
-        status: 'active',
-      }).session(session);
-
-      if (feeComponents.length === 0) {
-        throw createError(
-          400,
-          'No active fee components are configured for this course.'
-        );
-      }
-
-      // 4. Resolve the student's email.
-      const email = (
-        admissionData.email || enquiry.email || ''
-      ).trim().toLowerCase();
-
-      if (!email) {
-        throw createError(
-          400,
-          'Email is required to create the student login account.'
-        );
-      }
-
-      // 5. Check for an existing account.
-      const existingUser = await User.findOne({ email }).session(session);
-
-      if (existingUser) {
-        throw createError(
-          409,
-          'A user account with this email already exists.'
-        );
-      }
-
-      // 6. Generate a secure temporary password.
-      const temporaryPassword = crypto.randomBytes(24).toString('base64url');
-
-      // 7. Create the student login account.
-      const [user] = await User.create(
-        [
-          {
-            name: enquiry.name,
-            email,
-            phone: enquiry.phone,
-            password: temporaryPassword,
-            role: 'student',
-            is_active: true,
-            must_change_password: true,
-          },
-        ],
-        { session }
-      );
-
-      // 8. Generate a unique Student ID.
-      const year = new Date().getFullYear();
-      const studentId = await generateStudentId(year, session);
-
-      // 9. Create the student profile.
-      const [student] = await Student.create(
-        [
-          {
-            student_id: studentId,
-            user_id: user._id,
-            full_name: enquiry.name,
-            dob: admissionData.dob,
-            gender: admissionData.gender || null,
-            phone: enquiry.phone,
-            email,
-            address: admissionData.address,
-            guardian_name: admissionData.guardian_name || null,
-            guardian_phone: admissionData.guardian_phone || null,
-            qualification: admissionData.qualification,
-            course_id: course._id,
-            batch_id: null,
-            lifecycle_stage: 'admission',
-            stage_status: 'pending',
-            status: 'active',
-            admitted_on: new Date(),
-            created_by: staffUserId,
-          },
-        ],
-        { session }
-      );
-
-      // 10. Generate student fee records.
-const studentFeeRecords = feeComponents.map((component) => ({
-  student_id: student._id,
-  course_id: course._id,
-  fee_component_id: component._id,
-  fee_name: component.name,
-  amount_due: component.amount,
-  amount_paid: 0,
-  due_date: null,
-  required_for_exam: component.required_for_exam,
-  status: 'pending',
-}));
-
-await StudentFee.insertMany(studentFeeRecords, { session });
-
-      // 11. Record the initial admission stage.
-      await StudentStageHistory.create(
-        [
-          {
-            student_id: student._id,
-            from_stage: null,
-            to_stage: 'admission',
-            stage_status: 'pending',
-            changed_by: staffUserId,
-            changed_at: new Date(),
-            remarks: 'Initial admission through enquiry conversion.',
-          },
-        ],
-        { session }
-      );
-
-      // 12. Mark the enquiry as converted.
-      enquiry.status = 'converted';
-      enquiry.converted_student_id = student._id;
-
-      await enquiry.save({ session });
-
-      // Prepare response data. Password is returned only after commit.
-      result = {
-        enquiry: {
-          id: enquiry._id,
-          status: enquiry.status,
-          converted_student_id: student._id,
-        },
-        student: {
-          id: student._id,
-          student_id: student.student_id,
-          full_name: student.full_name,
-          email: student.email,
-          course_id: student.course_id,
-          lifecycle_stage: student.lifecycle_stage,
-        },
-        account: {
-          email,
-          temporary_password: temporaryPassword,
-          must_change_password: true,
-        },
-        fees_generated: studentFeeRecords.length,
-      };
+    // Step 3: Student record
+    student = await Student.create({
+      student_id: studentId,
+      user_id: user._id,
+      full_name: fullName,
+      dob: admissionData.dob,
+      gender: admissionData.gender || null,
+      phone,
+      email: displayEmail,
+      address: admissionData.address,
+      guardian_name: admissionData.guardian_name || null,
+      guardian_phone: admissionData.guardian_phone || null,
+      qualification: admissionData.qualification,
+      course_id: course._id,
+      batch_id: null,
+      lifecycle_stage: 'admission',
+      stage_status: 'pending',
+      status: 'active',
+      admitted_on: new Date(),
+      created_by: staffUserId,
     });
 
-    return result;
-  } catch (error) {
-    if (error.code === 11000) {
-      throw createError(
-        409,
-        'Duplicate student ID or email detected. Please retry the conversion.'
-      );
-    }
+    // Step 4: Fee records
+    studentFeeRecords = feeComponents.map((component) => ({
+      student_id: student._id,
+      course_id: course._id,
+      fee_component_id: component._id,
+      fee_name: component.name,
+      amount_due: component.amount,
+      amount_paid: 0,
+      due_date: null,
+      required_for_exam: component.required_for_exam,
+      status: 'pending',
+    }));
+    await StudentFee.insertMany(studentFeeRecords);
 
-    throw error;
-  } finally {
-    await session.endSession();
+    // Step 5: Stage history
+    await StudentStageHistory.create({
+      student_id: student._id,
+      from_stage: null,
+      to_stage: 'admission',
+      stage_status: 'pending',
+      changed_by: staffUserId,
+      changed_at: new Date(),
+      remarks: 'Initial admission through enquiry conversion.',
+    });
+
+    // Step 6: Mark enquiry converted
+    enquiry.status = 'converted';
+    enquiry.converted_student_id = student._id;
+    await enquiry.save();
+  } catch (err) {
+    // Manual rollback: delete everything if any step fails
+    if (student?._id) {
+      await Student.findByIdAndDelete(student._id).catch(() => {});
+      await StudentFee.deleteMany({ student_id: student._id }).catch(() => {});
+      await StudentStageHistory.deleteMany({ student_id: student._id }).catch(() => {});
+    }
+    await User.findByIdAndDelete(user._id).catch(() => {});
+    throw err;
   }
+
+  return {
+    enquiry: {
+      id: enquiry._id,
+      status: enquiry.status,
+      converted_student_id: student._id,
+    },
+    student: {
+      id: student._id,
+      student_id: student.student_id,
+      full_name: student.full_name,
+      email: student.email,
+      course_id: student.course_id,
+      lifecycle_stage: student.lifecycle_stage,
+    },
+    account: {
+      email: syntheticEmail,
+      phone,
+      temporary_password: temporaryPassword,
+      must_change_password: true,
+    },
+    fees_generated: studentFeeRecords.length,
+  };
 };

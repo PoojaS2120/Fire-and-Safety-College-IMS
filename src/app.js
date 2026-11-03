@@ -48,6 +48,7 @@ app.use('/api/v1/faculty-assignments', require('./modules/faculty/routes/faculty
 // Ritz branch routes
 app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
 app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
+app.use('/api/v1/student', require('./modules/students/routes/studentSelfRoutes'));
 app.use('/api/v1', require('./modules/documents/routes/documentRoutes'));
 app.use('/api/v1/notices', require('./modules/notices/routes/noticeRoutes'));
 
@@ -80,6 +81,8 @@ app.use(
   '/api/v1/exams',
   require('./modules/exams/routes/examRoutes')
 );
+app.use('/api/v1/exam-forms', require('./modules/exams/routes/examFormRoutes'));
+app.use('/api/v1/student/exam-forms', require('./modules/exams/routes/studentExamRoutes'));
 
 // Global Error Handler
 app.use(errorMiddleware);

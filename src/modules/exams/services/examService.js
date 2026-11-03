@@ -271,9 +271,8 @@ exports.createExam = async (data, user, ip) => {
 };
 
 // =====================================================
-// 2. LIST EXAMS
+// 2. LIST EXAMS (with populate + pagination)
 // =====================================================
-
 exports.listExams = async (query, user) => {
   const {
     page = 1,
@@ -291,19 +290,12 @@ exports.listExams = async (query, user) => {
     sort_order = 'desc',
   } = query;
 
-  const filter = {
-    deleted_at: null,
-  };
+  const filter = { deleted_at: null };
 
   if (user.role === 'faculty') {
     filter.faculty_id = user.id;
-  } else if (
-    user.role === 'super_admin' ||
-    user.role === 'office_staff'
-  ) {
-    if (faculty_id) {
-      filter.faculty_id = faculty_id;
-    }
+  } else if (user.role === 'super_admin' || user.role === 'office_staff') {
+    if (faculty_id) filter.faculty_id = faculty_id;
   } else {
     fail(403, 'You are not authorized to view exams');
   }
@@ -313,20 +305,11 @@ exports.listExams = async (query, user) => {
   if (exam_type) filter.exam_type = exam_type;
   if (status) filter.status = status;
 
-  if (subject) {
-    filter.subject = {
-      $regex: subject,
-      $options: 'i',
-    };
-  }
+  if (subject) filter.subject = { $regex: subject, $options: 'i' };
 
   if (start_date || end_date) {
     filter.exam_date = {};
-
-    if (start_date) {
-      filter.exam_date.$gte = new Date(start_date);
-    }
-
+    if (start_date) filter.exam_date.$gte = new Date(start_date);
     if (end_date) {
       const lastDate = new Date(end_date);
       lastDate.setHours(23, 59, 59, 999);
@@ -343,27 +326,45 @@ exports.listExams = async (query, user) => {
 
   const skip = (Number(page) - 1) * Number(limit);
 
-  return Exam.find(filter)
-    .sort({
-      [sort_by]: sort_order === 'asc' ? 1 : -1,
-    })
-    .skip(skip)
-    .limit(Number(limit))
-    .lean();
+  const [exams, total] = await Promise.all([
+    Exam.find(filter)
+      .sort({ [sort_by]: sort_order === 'asc' ? 1 : -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .populate('course_id', 'name duration')
+      .populate('batch_id', 'name')
+      .populate('faculty_id', 'name email')
+      .lean(),
+    Exam.countDocuments(filter),
+  ]);
+
+  return {
+    exams,
+    pagination: {
+      page: Number(page),
+      limit: Number(limit),
+      total,
+      totalPages: Math.ceil(total / Number(limit)),
+    },
+  };
 };
 
 // =====================================================
-// 3. GET EXAM BY ID
+// 3. GET EXAM BY ID (with populate)
 // =====================================================
-
 exports.getExamById = async (id, user) => {
-  const exam = await getExam(id);
+  if (!validId(id)) fail(400, 'Invalid exam ID');
 
+  const exam = await Exam.findOne({ _id: id, deleted_at: null })
+    .populate('course_id', 'name duration')
+    .populate('batch_id', 'name start_date end_date')
+    .populate('faculty_id', 'name email')
+    .populate('created_by', 'name email');
+
+  if (!exam) fail(404, 'Exam not found');
   checkReadPermission(exam, user);
-
   return exam;
 };
-
 // =====================================================
 // 4. UPDATE EXAM
 // =====================================================
