@@ -14,6 +14,5 @@ exports.loginSchema = Joi.object({
 
 // NEW: Validation for Student App Login
 exports.studentLoginSchema = Joi.object({
-  name: Joi.string().trim().min(2).max(150).required(),
   phone: Joi.string().trim().pattern(/^[0-9+\-\s()]{7,15}$/).required()
 });

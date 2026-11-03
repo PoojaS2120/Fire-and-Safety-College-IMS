@@ -40,7 +40,6 @@ app.use('/api/v1/courses', require('./modules/courses/routes/courseRoutes'));
 app.use('/api/v1/tc-lc', require('./modules/tclc/routes/tclcRoutes'));
 
 // Main branch routes
-
 app.use('/api/v1/audit-logs', require('./modules/audit/routes/auditRoutes'));
 app.use('/api/v1/fees', require('./modules/fees/routes/feeRoutes'));
 app.use('/api/v1/faculty-assignments', require('./modules/faculty/routes/facultyRoutes'));
@@ -48,6 +47,7 @@ app.use('/api/v1/faculty-assignments', require('./modules/faculty/routes/faculty
 // Ritz branch routes
 app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
 app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
+app.use('/api/v1/student', require('./modules/students/routes/studentSelfRoutes'));
 app.use('/api/v1', require('./modules/documents/routes/documentRoutes'));
 app.use('/api/v1/notices', require('./modules/notices/routes/noticeRoutes'));
 
@@ -69,15 +69,26 @@ app.use(
   require('./modules/materials/routes/materialRoutes')
 );
 
-// ClassTest and Mark management 
+// ClassTest and Mark Management - B34
 app.use(
   '/api/v1/class-tests',
   require('./modules/classtests/routes/classTestRoutes')
 );
+
+// Student App Routes - B26
 app.use(
   '/api/v1/student',
   require('./modules/studentapp/routes/studentAppRoutes')
 );
+
+// Exams and Marks Management - B35
+app.use(
+  '/api/v1/exams',
+  require('./modules/exams/routes/examRoutes')
+);
+
+app.use('/api/v1/exam-forms', require('./modules/exams/routes/examFormRoutes'));
+app.use('/api/v1/student/exam-forms', require('./modules/exams/routes/studentExamRoutes'));
 
 // Global Error Handler
 app.use(errorMiddleware);

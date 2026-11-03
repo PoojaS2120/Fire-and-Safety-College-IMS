@@ -1,32 +1,17 @@
-
 const Joi = require('joi');
 
 const objectId = Joi.string().hex().length(24);
 
 const GENDERS = ['male', 'female', 'other'];
-
 const LIFECYCLE_STAGES = [
-  'enquiry',
-  'admission',
-  'documents',
-  'fees',
-  'material',
-  'schedule',
-  'class_test',
-  'exam',
-  'exam_form',
-  'test',
-  'result',
-  'tc_lc',
+  'enquiry', 'admission', 'documents', 'fees', 'material', 'schedule',
+  'class_test', 'exam', 'exam_form', 'test', 'result', 'tc_lc',
 ];
-
 const STAGE_STATUSES = ['pending', 'in_progress', 'completed', 'blocked'];
-
 const STUDENT_STATUSES = ['active', 'completed', 'left', 'tc_issued', 'deactive'];
 
-// CREATE STUDENT (Removed user_id, since backend auto-generates it)
+// CREATE — student_id is auto-generated
 exports.createStudentSchema = Joi.object({
-  student_id: Joi.string().trim().max(20).required(),
   full_name: Joi.string().trim().min(2).max(150).required(),
   dob: Joi.date().iso().less('now').required(),
   gender: Joi.string().valid(...GENDERS).allow(null).optional(),
@@ -39,9 +24,8 @@ exports.createStudentSchema = Joi.object({
   course_id: objectId.required(),
   batch_id: objectId.allow('', null).optional(),
   admitted_on: Joi.date().iso().required(),
-});
+}).unknown(false);
 
-// UPDATE STUDENT PROFILE
 exports.updateStudentSchema = Joi.object({
   full_name: Joi.string().trim().min(2).max(150).optional(),
   dob: Joi.date().iso().less('now').optional(),
@@ -56,16 +40,15 @@ exports.updateStudentSchema = Joi.object({
   batch_id: objectId.allow('', null).optional(),
 }).min(1).unknown(false);
 
-// UPDATE STATUS
 exports.updateStudentStatusSchema = Joi.object({
   status: Joi.string().valid(...STUDENT_STATUSES).required(),
-});
+}).unknown(false);
 
-// LIST AND FILTER
 exports.listStudentsSchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
   q: Joi.string().trim().max(150).allow('').optional(),
+  search: Joi.string().trim().max(150).allow('').optional(),
   status: Joi.string().valid(...STUDENT_STATUSES).optional(),
   lifecycle_stage: Joi.string().valid(...LIFECYCLE_STAGES).optional(),
   stage_status: Joi.string().valid(...STAGE_STATUSES).optional(),
@@ -73,21 +56,13 @@ exports.listStudentsSchema = Joi.object({
   batchId: objectId.optional(),
 }).unknown(false);
 
-// UPDATE STUDENT LIFECYCLE STAGE
 exports.updateStudentStageSchema = Joi.object({
-  lifecycle_stage: Joi.string()
-    .valid(...LIFECYCLE_STAGES)
-    .required(),
+  lifecycle_stage: Joi.string().valid(...LIFECYCLE_STAGES).required(),
+  stage_status: Joi.string().valid(...STAGE_STATUSES).required(),
+  remarks: Joi.string().trim().max(500).allow('', null).optional(),
+}).unknown(false);
 
-  stage_status: Joi.string()
-    .valid(...STAGE_STATUSES)
-    .required(),
-
-  remarks: Joi.string()
-    .trim()
-    .max(500)
-    .allow('', null)
-    .optional(),
-})
-  .min(1)
-  .unknown(false);
+exports.assignCourseSchema = Joi.object({
+  course_id: objectId.required(),
+  batch_id: objectId.allow('', null).optional(),
+}).unknown(false);

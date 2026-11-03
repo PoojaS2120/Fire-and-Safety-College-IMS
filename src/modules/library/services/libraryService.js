@@ -1,7 +1,7 @@
-
 const Book = require('../models/Book');
 const BookCategory = require('../models/BookCategory');
 const BookIssue = require('../models/BookIssue');
+const Student = require('../../students/models/Student');
 
 // ---------- CATEGORIES ----------
 exports.createCategory = async (data) => {
@@ -23,7 +23,7 @@ exports.updateCategory = async (id, data) => {
   if (data.name) {
     const existing = await BookCategory.findOne({
       name: data.name,
-      _id: { $ne: id }
+      _id: { $ne: id },
     }).collation({ locale: 'en', strength: 2 });
 
     if (existing) {
@@ -47,20 +47,18 @@ exports.updateCategory = async (id, data) => {
 // ---------- BOOKS ----------
 exports.createBook = async (data) => {
   const dup = await Book.findOne({ bookCode: data.bookCode });
-
   if (dup) {
     throw { statusCode: 409, message: 'Book code already exists' };
   }
 
   const cat = await BookCategory.findById(data.category);
-
   if (!cat) {
     throw { statusCode: 400, message: 'Category not found' };
   }
 
   return Book.create({
     ...data,
-    availableQty: data.totalQty
+    availableQty: data.totalQty,
   });
 };
 
@@ -71,15 +69,15 @@ exports.listBooks = async (query) => {
     filter.$or = [
       { title: { $regex: query.q, $options: 'i' } },
       { author: { $regex: query.q, $options: 'i' } },
-      { bookCode: { $regex: query.q, $options: 'i' } }
+      { bookCode: { $regex: query.q, $options: 'i' } },
     ];
   }
 
   if (query.category) filter.category = query.category;
   if (query.status) filter.status = query.status;
 
-  const page = parseInt(query.page) || 1;
-  const limit = parseInt(query.limit) || 20;
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 20));
   const skip = (page - 1) * limit;
 
   const [rows, total] = await Promise.all([
@@ -88,8 +86,7 @@ exports.listBooks = async (query) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
-
-    Book.countDocuments(filter)
+    Book.countDocuments(filter),
   ]);
 
   return { rows, total, page, limit };
@@ -97,17 +94,14 @@ exports.listBooks = async (query) => {
 
 exports.getBook = async (id) => {
   const book = await Book.findById(id).populate('category', 'name');
-
   if (!book) {
     throw { statusCode: 404, message: 'Book not found' };
   }
-
   return book;
 };
 
 exports.updateBook = async (id, data) => {
   const existing = await Book.findById(id);
-
   if (!existing) {
     throw { statusCode: 404, message: 'Book not found' };
   }
@@ -115,9 +109,8 @@ exports.updateBook = async (id, data) => {
   if (data.bookCode && data.bookCode !== existing.bookCode) {
     const dup = await Book.findOne({
       bookCode: data.bookCode,
-      _id: { $ne: id }
+      _id: { $ne: id },
     });
-
     if (dup) {
       throw { statusCode: 409, message: 'Book code already exists' };
     }
@@ -125,7 +118,6 @@ exports.updateBook = async (id, data) => {
 
   if (data.category) {
     const cat = await BookCategory.findById(data.category);
-
     if (!cat) {
       throw { statusCode: 400, message: 'Category not found' };
     }
@@ -137,7 +129,7 @@ exports.updateBook = async (id, data) => {
     if (data.totalQty < issued) {
       throw {
         statusCode: 400,
-        message: `Total qty cannot be less than issued count (${issued})`
+        message: `Total qty cannot be less than issued count (${issued})`,
       };
     }
 
@@ -168,11 +160,12 @@ exports.updateStatus = async (id, status) => {
 
 // ---------- ISSUES ----------
 exports.issueBook = async (data, issuedByUserId) => {
+  // Step 1: Atomically reserve a copy (decrement stock)
   const book = await Book.findOneAndUpdate(
     {
       _id: data.bookId,
       availableQty: { $gt: 0 },
-      status: 'active'
+      status: 'active',
     },
     { $inc: { availableQty: -1 } },
     { returnDocument: 'after' }
@@ -181,22 +174,29 @@ exports.issueBook = async (data, issuedByUserId) => {
   if (!book) {
     throw {
       statusCode: 400,
-      message: 'Book not available or out of stock'
+      message: 'Book not available or out of stock',
     };
   }
 
-  const issue = await BookIssue.create({
-    book: data.bookId,
-    student: data.studentId,
-    issueDate: new Date(),
-    dueDate: new Date(data.dueDate),
-    issuedBy: issuedByUserId
-  });
+  // Step 2: Create the issue record (with rollback on failure)
+  try {
+    const issue = await BookIssue.create({
+      book: data.bookId,
+      student: data.studentId,
+      issueDate: new Date(),
+      dueDate: new Date(data.dueDate),
+      issuedBy: issuedByUserId,
+    });
 
-  return BookIssue.findById(issue._id)
-    .populate('book', 'title author bookCode')
-    .populate('student', 'full_name student_id email')
-    .populate('issuedBy', 'name');
+    return await BookIssue.findById(issue._id)
+      .populate('book', 'title author bookCode')
+      .populate('student', 'full_name student_id email')
+      .populate('issuedBy', 'name');
+  } catch (err) {
+    // ROLLBACK: restore the stock
+    await Book.findByIdAndUpdate(data.bookId, { $inc: { availableQty: 1 } });
+    throw err;
+  }
 };
 
 exports.returnBook = async (issueId) => {
@@ -212,13 +212,9 @@ exports.returnBook = async (issueId) => {
 
   issue.status = 'returned';
   issue.returnDate = new Date();
-
   await issue.save();
 
-  await Book.findByIdAndUpdate(
-    issue.book,
-    { $inc: { availableQty: 1 } }
-  );
+  await Book.findByIdAndUpdate(issue.book, { $inc: { availableQty: 1 } });
 
   return issue;
 };
@@ -227,12 +223,33 @@ exports.listIssues = async (query) => {
   const filter = {};
 
   if (query.status) filter.status = query.status;
+  if (query.student) filter.student = query.student;
+  if (query.book) filter.book = query.book;
 
-  return BookIssue.find(filter)
-    .populate('book', 'title author bookCode')
-    .populate('student', 'full_name student_id email')
-    .populate('issuedBy', 'name')
-    .sort({ createdAt: -1 });
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 20));
+  const skip = (page - 1) * limit;
+
+  const [rows, total] = await Promise.all([
+    BookIssue.find(filter)
+      .populate('book', 'title author bookCode')
+      .populate('student', 'full_name student_id email')
+      .populate('issuedBy', 'name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    BookIssue.countDocuments(filter),
+  ]);
+
+  return {
+    rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
 exports.getOverdue = async () => {
@@ -240,7 +257,7 @@ exports.getOverdue = async () => {
 
   return BookIssue.find({
     status: 'issued',
-    dueDate: { $lt: today }
+    dueDate: { $lt: today },
   })
     .populate('book', 'title author bookCode')
     .populate('student', 'full_name student_id email')
@@ -254,6 +271,18 @@ exports.getStudentHistory = async (studentId) => {
     .sort({ createdAt: -1 });
 };
 
+// NEW: student self-history (used when a student calls the endpoint)
+exports.getStudentHistoryForUser = async (userId) => {
+  const student = await Student.findOne({ user_id: userId }).select('_id');
+  if (!student) {
+    throw { statusCode: 404, message: 'Student profile not found' };
+  }
+
+  return BookIssue.find({ student: student._id })
+    .populate('book', 'title author bookCode')
+    .sort({ createdAt: -1 });
+};
+
 // ---------- SOFT DELETES ----------
 exports.deleteCategory = async (id) => {
   const booksCount = await Book.countDocuments({ category: id });
@@ -261,7 +290,7 @@ exports.deleteCategory = async (id) => {
   if (booksCount > 0) {
     throw {
       statusCode: 400,
-      message: 'Cannot delete category because it has books assigned to it.'
+      message: 'Cannot delete category because it has books assigned to it.',
     };
   }
 
@@ -277,13 +306,13 @@ exports.deleteCategory = async (id) => {
 exports.deleteBook = async (id) => {
   const activeIssues = await BookIssue.countDocuments({
     book: id,
-    status: 'issued'
+    status: 'issued',
   });
 
   if (activeIssues > 0) {
     throw {
       statusCode: 400,
-      message: 'Cannot delete book because it is currently issued. Please return it first.'
+      message: 'Cannot delete book because it is currently issued. Please return it first.',
     };
   }
 
