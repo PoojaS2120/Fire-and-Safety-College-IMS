@@ -3,6 +3,7 @@ const Student = require('../../students/models/Student');
 const ClassSchedule = require('../../classschedules/models/ClassSchedule');
 const materialService = require('../../materials/services/materialService');
 const libraryService = require('../../library/services/libraryService');
+const Notice = require('../../notices/models/Notice');
 
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -182,4 +183,97 @@ exports.getLibraryBook = async (bookId) => {
   }
 
   return book;
+};
+
+// ==========================================
+// STUDENT APK - NOTICES
+// ==========================================
+
+// GET /student/notices
+exports.getStudentNotices = async (userId, filters = {}) => {
+  const student = await getAuthenticatedStudent(userId);
+
+  const page = Math.max(parseInt(filters.page, 10) || 1, 1);
+  const limit = Math.min(
+    Math.max(parseInt(filters.limit, 10) || 20, 1),
+    100
+  );
+
+  const audienceConditions = [
+    { targetType: 'all' },
+    {
+      targetType: 'course',
+      targetCourse: student.course_id._id
+    }
+  ];
+
+  if (student.batch_id) {
+    audienceConditions.push({
+      targetType: 'batch',
+      targetBatch: student.batch_id._id
+    });
+  }
+
+  const filter = {
+    status: 'published',
+    $or: audienceConditions
+  };
+
+  const [rows, total] = await Promise.all([
+    Notice.find(filter)
+      .populate('targetCourse', 'name')
+      .populate('targetBatch', 'name')
+      .sort({ publishedAt: -1, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+
+    Notice.countDocuments(filter)
+  ]);
+
+  return {
+    rows,
+    total,
+    page,
+    limit
+  };
+};
+
+// GET /student/notices/batch
+exports.getStudentBatchNotices = async (userId, filters = {}) => {
+  const student = await getAuthenticatedStudent(userId);
+
+  const batchId = student.batch_id?._id || student.batch_id;
+
+  if (!batchId) {
+    return {
+      rows: [],
+      total: 0,
+      page: 1,
+      limit: 20
+    };
+  }
+
+  const page = Math.max(parseInt(filters.page, 10) || 1, 1);
+  const limit = Math.min(
+    Math.max(parseInt(filters.limit, 10) || 20, 1),
+    100
+  );
+
+  const filter = {
+    status: 'published',
+    targetType: 'batch',
+    targetBatch: batchId
+  };
+
+  const [rows, total] = await Promise.all([
+    Notice.find(filter)
+      .populate('targetBatch', 'name')
+      .sort({ publishedAt: -1, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+
+    Notice.countDocuments(filter)
+  ]);
+
+  return { rows, total, page, limit };
 };

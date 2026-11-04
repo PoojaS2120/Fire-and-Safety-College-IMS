@@ -75,4 +75,15 @@ router.get(
   studentAppController.getLibraryBook
 );
 
+
+// STUDENT APK - NOTICES
+
+router.get('/notices', studentAppController.getStudentNotices);
+
+//batch
+router.get(
+  '/notices/batch',
+  studentAppController.getStudentBatchNotices
+);
+
 module.exports = router;

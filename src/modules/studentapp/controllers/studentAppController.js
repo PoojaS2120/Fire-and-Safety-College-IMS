@@ -134,3 +134,55 @@ exports.getLibraryBook = async (req, res, next) => {
     next(error);
   }
 };
+
+// ==========================================
+// STUDENT APK - NOTICES
+// ==========================================
+
+// GET /student/notices
+exports.getStudentNotices = async (req, res, next) => {
+  try {
+    const result = await studentAppService.getStudentNotices(
+      req.user.id,
+      req.query
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Student notices fetched successfully.',
+      data: result.rows,
+      meta: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / result.limit)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /student/notices/batch
+exports.getStudentBatchNotices = async (req, res, next) => {
+  try {
+    const result = await studentAppService.getStudentBatchNotices(
+      req.user.id,
+      req.query
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Batch notices fetched successfully.',
+      data: result.rows,
+      meta: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / result.limit)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
