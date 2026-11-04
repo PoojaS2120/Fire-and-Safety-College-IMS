@@ -1,49 +1,83 @@
+const mongoose = require('mongoose');
 const Student = require('../../students/models/Student');
 const feeService = require('../services/feeService');
+const Payment = require('../models/Payment');
 
-// 1. Generate Ledger
+// ==========================================================
+// 1. GENERATE LEDGER (Staff only)
+// ==========================================================
 exports.generateLedger = async (req, res, next) => {
   try {
     const { studentId, courseId } = req.body;
+
+    if (!studentId || !courseId) {
+      return res.status(400).json({
+        success: false,
+        message: 'studentId and courseId are required',
+      });
+    }
+
     const result = await feeService.generateFeeLedger(studentId, courseId);
-    res.status(201).json({ success: true, message: 'Fee ledger generated', data: result });
-  } catch (err) { next(err); }
+    return res.status(201).json({
+      success: true,
+      message: 'Fee ledger generated',
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
-// 2. Get Summary
+// ==========================================================
+// 2. FEE SUMMARY
+//    - Staff: /fees/:studentId/summary
+//    - Student: /fees/my/fees  OR  /student/fees/summary
+// ==========================================================
 exports.getSummary = async (req, res, next) => {
   try {
     let studentId = req.params.studentId;
 
+    // Student branch: resolve own studentId from token
     if (req.user.role === 'student') {
       const student = await Student.findOne({ user_id: req.user.id });
 
       if (!student) {
         return res.status(404).json({
           success: false,
-          message: 'Student profile not found'
+          message: 'Student profile not found',
         });
       }
 
-      if (student._id.toString() !== studentId) {
+      // If studentId provided in URL, ensure it matches own
+      if (studentId && student._id.toString() !== studentId) {
         return res.status(403).json({
           success: false,
-          message: 'You are not authorized to access this fee summary'
+          message: 'You are not authorized to access this fee summary',
         });
       }
 
       studentId = student._id;
     }
 
-    const result = await feeService.getFeeSummary(studentId);
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'studentId is required',
+      });
+    }
 
-    res.status(200).json({ success: true, data: result });
+    const result = await feeService.getFeeSummary(studentId);
+    return res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
   }
 };
 
-// 3. Check Eligibility
+// ==========================================================
+// 3. CHECK ELIGIBILITY
+//    - Staff: /fees/:studentId/eligibility
+//    - Student: same URL (own enforced)
+// ==========================================================
 exports.checkEligibility = async (req, res, next) => {
   try {
     let studentId = req.params.studentId;
@@ -54,51 +88,53 @@ exports.checkEligibility = async (req, res, next) => {
       if (!student) {
         return res.status(404).json({
           success: false,
-          message: 'Student profile not found'
+          message: 'Student profile not found',
         });
       }
 
-      if (student._id.toString() !== studentId) {
+      if (studentId && student._id.toString() !== studentId) {
         return res.status(403).json({
           success: false,
-          message: 'You are not authorized to check another student\'s eligibility'
+          message:
+            "You are not authorized to check another student's eligibility",
         });
       }
 
       studentId = student._id;
     }
 
-    const result = await feeService.checkExamEligibility(studentId);
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'studentId is required',
+      });
+    }
 
-    res.status(200).json({ success: true, data: result });
+    const result = await feeService.checkExamEligibility(studentId);
+    return res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
   }
 };
 
-
-// Record Payment
+// ==========================================================
+// 4. RECORD PAYMENT (Staff only)
+// ==========================================================
 exports.recordPayment = async (req, res, next) => {
   try {
-    const {
-      studentId,
-      amount,
-      mode,
-      reference_no,
-      payment_date
-    } = req.body;
+    const { studentId, amount, mode, reference_no, payment_date } = req.body;
 
     if (!studentId || amount === undefined || !mode) {
       return res.status(400).json({
         success: false,
-        message: 'studentId, amount and mode are required'
+        message: 'studentId, amount and mode are required',
       });
     }
 
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
       return res.status(400).json({
         success: false,
-        message: 'Amount must be a valid number greater than zero'
+        message: 'Amount must be a valid number greater than zero',
       });
     }
 
@@ -115,89 +151,78 @@ exports.recordPayment = async (req, res, next) => {
     return res.status(201).json({
       success: true,
       message: 'Payment recorded successfully',
-      data: payment
+      data: payment,
     });
-
   } catch (err) {
     next(err);
   }
 };
 
-
-// 5. Get Receipt JSON
+// ==========================================================
+// 5. GET RECEIPT (JSON)
+//    - Staff: any receipt
+//    - Student: own only
+// ==========================================================
 exports.getReceipt = async (req, res, next) => {
   try {
-    const receipt = await feeService.getReceiptData(
-      req.params.paymentId
-    );
+    const receipt = await feeService.getReceiptData(req.params.paymentId);
 
-    // Students can access only their own receipts.
+    // Students can only access their own receipts
     if (req.user.role === 'student') {
-      const student = await Student.findOne({
-        user_id: req.user.id
-      });
+      const student = await Student.findOne({ user_id: req.user.id });
 
       if (!student) {
         return res.status(404).json({
           success: false,
-          message: 'Student profile not found'
+          message: 'Student profile not found',
         });
       }
 
-      if (
-        receipt.student.student_id !== student.student_id
-      ) {
+      if (receipt.student.student_id !== student.student_id) {
         return res.status(403).json({
           success: false,
-          message: 'You are not authorized to access this receipt'
+          message: 'You are not authorized to access this receipt',
         });
       }
     }
 
-    return res.status(200).json({
-      success: true,
-      data: receipt
-    });
+    return res.status(200).json({ success: true, data: receipt });
   } catch (err) {
     next(err);
   }
 };
 
-// 6. Download Receipt PDF
+// ==========================================================
+// 6. DOWNLOAD RECEIPT PDF
+//    - Staff: any receipt
+//    - Student: own only
+// ==========================================================
 exports.downloadReceipt = async (req, res, next) => {
   try {
-    // Students can download only their own receipts.
+    // Students can only download their own receipts
     if (req.user.role === 'student') {
-      const student = await Student.findOne({
-        user_id: req.user.id
-      });
+      const student = await Student.findOne({ user_id: req.user.id });
 
       if (!student) {
         return res.status(404).json({
           success: false,
-          message: 'Student profile not found'
+          message: 'Student profile not found',
         });
       }
 
-      const Payment = require('../models/Payment');
-
-      const payment = await Payment.findById(
-        req.params.paymentId
-      );
+      const payment = await Payment.findById(req.params.paymentId);
 
       if (!payment) {
         return res.status(404).json({
           success: false,
-          message: 'Payment not found'
+          message: 'Payment not found',
         });
       }
 
-      if (
-        payment.student_id.toString() !== student._id.toString()
-      ) {
+      if (payment.student_id.toString() !== student._id.toString()) {
         return res.status(403).json({
           success: false,
-          message: 'You are not authorized to access this receipt'
+          message: 'You are not authorized to access this receipt',
         });
       }
     }
@@ -207,7 +232,6 @@ exports.downloadReceipt = async (req, res, next) => {
     );
 
     res.setHeader('Content-Type', 'application/pdf');
-
     res.setHeader(
       'Content-Disposition',
       `attachment; filename=receipt_${req.params.paymentId}.pdf`
@@ -215,21 +239,26 @@ exports.downloadReceipt = async (req, res, next) => {
 
     pdfStream.on('error', next);
     pdfStream.pipe(res);
-
   } catch (err) {
     next(err);
   }
 };
 
-// 6. Pending Fees
+// ==========================================================
+// 7. LIST PENDING FEES (Staff only)
+// ==========================================================
 exports.getPendingFees = async (req, res, next) => {
   try {
     const pending = await feeService.getPendingFeesList();
-    res.status(200).json({ success: true, data: pending });
-  } catch (err) { next(err); }
+    return res.status(200).json({ success: true, data: pending });
+  } catch (err) {
+    next(err);
+  }
 };
 
-// 7. Cancel Payment
+// ==========================================================
+// 8. CANCEL PAYMENT (Super Admin only)
+// ==========================================================
 exports.cancelPayment = async (req, res, next) => {
   try {
     const { reason } = req.body;
@@ -237,7 +266,7 @@ exports.cancelPayment = async (req, res, next) => {
     if (!reason || !reason.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Cancel reason is required'
+        message: 'Cancel reason is required',
       });
     }
 
@@ -251,35 +280,56 @@ exports.cancelPayment = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: result.message,
-      data: result
+      data: result,
     });
-
   } catch (err) {
     next(err);
   }
 };
 
-// 8. STUDENT APP: Get Own Fees
+// ==========================================================
+// 9. STUDENT APP: GET OWN FEES
+//    Endpoint: GET /student/fees  OR  GET /student/fees/summary
+// ==========================================================
 exports.getMyFees = async (req, res, next) => {
   try {
-    const Student = require('../../students/models/Student');
-    // Get student profile using the user ID from the token
     const student = await Student.findOne({ user_id: req.user.id });
-    if (!student) return res.status(404).json({ success: false, message: 'Student profile not found' });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student profile not found',
+      });
+    }
 
     const summary = await feeService.getFeeSummary(student._id);
-    res.status(200).json({ success: true, data: summary });
-  } catch (err) { next(err); }
+    return res.status(200).json({ success: true, data: summary });
+  } catch (err) {
+    next(err);
+  }
 };
 
-// 9. STUDENT APP: Get Own Payments
+// ==========================================================
+// 10. STUDENT APP: GET OWN PAYMENTS
+//     Endpoint: GET /student/payments
+// ==========================================================
 exports.getMyPayments = async (req, res, next) => {
   try {
-    const Student = require('../../students/models/Student');
     const student = await Student.findOne({ user_id: req.user.id });
-    if (!student) return res.status(404).json({ success: false, message: 'Student profile not found' });
 
-    const payments = await require('../models/Payment').find({ student_id: student._id }).sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: payments });
-  } catch (err) { next(err); }
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student profile not found',
+      });
+    }
+
+    const payments = await Payment.find({ student_id: student._id }).sort({
+      createdAt: -1,
+    });
+
+    return res.status(200).json({ success: true, data: payments });
+  } catch (err) {
+    next(err);
+  }
 };
