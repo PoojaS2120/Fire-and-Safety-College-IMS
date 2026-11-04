@@ -1,4 +1,3 @@
-
 const express = require('express');
 const router = express.Router();
 
@@ -33,9 +32,22 @@ router.get('/schedule', studentAppController.getSchedule);
 // ==========================================
 router.get('/materials', studentAppController.getMaterials);
 
+// Get material details by ID
+router.get(
+  '/materials/:id',
+  studentAppController.getMaterialById
+);
+
+// Download PDF material
 router.get(
   '/materials/:id/download',
   materialController.downloadPdf
+);
+
+// Stream video material
+router.get(
+  '/materials/:id/stream',
+  materialController.streamVideo
 );
 
 // ==========================================
@@ -75,12 +87,17 @@ router.get(
   studentAppController.getLibraryBook
 );
 
-
+// ==========================================
 // STUDENT APK - NOTICES
+// ==========================================
 
-router.get('/notices', studentAppController.getStudentNotices);
+// All student notices
+router.get(
+  '/notices',
+  studentAppController.getStudentNotices
+);
 
-//batch
+// Batch-specific notices
 router.get(
   '/notices/batch',
   studentAppController.getStudentBatchNotices

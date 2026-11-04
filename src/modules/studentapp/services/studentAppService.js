@@ -1,4 +1,3 @@
-
 const Student = require('../../students/models/Student');
 const ClassSchedule = require('../../classschedules/models/ClassSchedule');
 const materialService = require('../../materials/services/materialService');
@@ -25,6 +24,10 @@ const getAuthenticatedStudent = async (userId) => {
   return student;
 };
 
+// ==========================================
+// PROFILE
+// ==========================================
+
 // GET /student/profile
 exports.getProfile = async (userId) => {
   const student = await getAuthenticatedStudent(userId);
@@ -47,6 +50,10 @@ exports.getProfile = async (userId) => {
   };
 };
 
+// ==========================================
+// COURSE
+// ==========================================
+
 // GET /student/course
 exports.getCourse = async (userId) => {
   const student = await getAuthenticatedStudent(userId);
@@ -56,6 +63,10 @@ exports.getCourse = async (userId) => {
     batch: student.batch_id
   };
 };
+
+// ==========================================
+// ACADEMIC SCHEDULE
+// ==========================================
 
 // GET /student/schedule
 exports.getSchedule = async (userId, filters = {}) => {
@@ -94,6 +105,10 @@ exports.getSchedule = async (userId, filters = {}) => {
     .sort({ date: 1, start_time: 1 });
 };
 
+// ==========================================
+// STUDY MATERIALS
+// ==========================================
+
 // GET /student/materials
 exports.getMaterials = async (userId, filters = {}) => {
   return materialService.getMaterials(filters, {
@@ -101,6 +116,24 @@ exports.getMaterials = async (userId, filters = {}) => {
     role: 'student'
   });
 };
+
+// GET /student/materials/:id
+exports.getMaterialById = async (userId, materialId) => {
+  const material = await materialService.getMaterialById(materialId, {
+    id: userId,
+    role: 'student'
+  });
+
+  if (material.status !== 'active') {
+    throw createError('Active study material not found.', 404);
+  }
+
+  return material;
+};
+
+// ==========================================
+// DASHBOARD
+// ==========================================
 
 // GET /student/dashboard
 exports.getDashboard = async (userId) => {

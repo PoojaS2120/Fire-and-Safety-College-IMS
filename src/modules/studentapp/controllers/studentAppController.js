@@ -1,4 +1,3 @@
-
 const studentAppService = require('../services/studentAppService');
 
 exports.getProfile = async (req, res, next) => {
@@ -47,6 +46,11 @@ exports.getSchedule = async (req, res, next) => {
   }
 };
 
+// ==========================================
+// STUDY MATERIALS
+// ==========================================
+
+// GET /student/materials
 exports.getMaterials = async (req, res, next) => {
   try {
     const data = await studentAppService.getMaterials(
@@ -64,6 +68,28 @@ exports.getMaterials = async (req, res, next) => {
     next(error);
   }
 };
+
+// GET /student/materials/:id
+exports.getMaterialById = async (req, res, next) => {
+  try {
+    const data = await studentAppService.getMaterialById(
+      req.user.id,
+      req.params.id
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Study material details fetched successfully.',
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
+// DASHBOARD
+// ==========================================
 
 exports.getDashboard = async (req, res, next) => {
   try {
