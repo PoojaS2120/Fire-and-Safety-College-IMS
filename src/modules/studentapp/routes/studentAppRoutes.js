@@ -12,33 +12,67 @@ const feeController = require('../../fees/controllers/feeController');
 // All Student APK routes require student authentication.
 router.use(verifyToken, authorize('student'));
 
-// Dashboard
+// ==========================================
+// DASHBOARD
+// ==========================================
 router.get('/dashboard', studentAppController.getDashboard);
 
-// Profile and Course
+// ==========================================
+// PROFILE AND COURSE
+// ==========================================
 router.get('/profile', studentAppController.getProfile);
 router.get('/course', studentAppController.getCourse);
 
-// Academic Schedule
+// ==========================================
+// ACADEMIC SCHEDULE
+// ==========================================
 router.get('/schedule', studentAppController.getSchedule);
 
-// Study Materials
+// ==========================================
+// STUDY MATERIALS
+// ==========================================
 router.get('/materials', studentAppController.getMaterials);
+
 router.get(
   '/materials/:id/download',
   materialController.downloadPdf
 );
 
-// Fees
+// ==========================================
+// FEES
+// ==========================================
 router.get('/fees', feeController.getMyFees);
 
-// Payments
+// ==========================================
+// PAYMENTS
+// ==========================================
 router.get('/payments', feeController.getMyPayments);
 
-// Payment Receipt
 router.get(
   '/payments/:paymentId/receipt',
   feeController.getReceipt
+);
+
+// ==========================================
+// STUDENT APK - LIBRARY
+// ==========================================
+
+// Library categories
+router.get(
+  '/library/categories',
+  studentAppController.getLibraryCategories
+);
+
+// Browse/search available books
+router.get(
+  '/library/books',
+  studentAppController.getLibraryBooks
+);
+
+// Individual book details
+router.get(
+  '/library/books/:id',
+  studentAppController.getLibraryBook
 );
 
 module.exports = router;

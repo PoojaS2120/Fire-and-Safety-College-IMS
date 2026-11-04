@@ -1,6 +1,8 @@
+
 const Student = require('../../students/models/Student');
 const ClassSchedule = require('../../classschedules/models/ClassSchedule');
 const materialService = require('../../materials/services/materialService');
+const libraryService = require('../../library/services/libraryService');
 
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -100,7 +102,6 @@ exports.getMaterials = async (userId, filters = {}) => {
 };
 
 // GET /student/dashboard
-// Additional aggregate endpoint for the Android dashboard.
 exports.getDashboard = async (userId) => {
   const student = await getAuthenticatedStudent(userId);
 
@@ -141,4 +142,44 @@ exports.getDashboard = async (userId) => {
     upcoming_classes: upcomingClasses,
     recent_materials: materials.slice(0, 5)
   };
+};
+
+// ==========================================
+// STUDENT APK - LIBRARY
+// ==========================================
+
+// GET /student/library/categories
+exports.getLibraryCategories = async () => {
+  return libraryService.listCategories();
+};
+
+// GET /student/library/books
+exports.getLibraryBooks = async (filters = {}) => {
+  const query = {
+    status: 'active',
+    page: filters.page,
+    limit: filters.limit
+  };
+
+  if (filters.q) {
+    query.q = String(filters.q).trim();
+  }
+
+  if (filters.category) {
+    query.category = filters.category;
+  }
+
+  return libraryService.listBooks(query);
+};
+
+// GET /student/library/books/:id
+exports.getLibraryBook = async (bookId) => {
+  const book = await libraryService.getBook(bookId);
+
+  // Students can only view active books.
+  if (book.status !== 'active') {
+    throw createError('Book is not available.', 404);
+  }
+
+  return book;
 };
