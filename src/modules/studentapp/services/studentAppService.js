@@ -1,5 +1,7 @@
+
 const Student = require('../../students/models/Student');
 const ClassSchedule = require('../../classschedules/models/ClassSchedule');
+const ClassTest = require('../../classtests/models/ClassTest');
 const materialService = require('../../materials/services/materialService');
 const libraryService = require('../../library/services/libraryService');
 const Notice = require('../../notices/models/Notice');
@@ -132,10 +134,106 @@ exports.getMaterialById = async (userId, materialId) => {
 };
 
 // ==========================================
+// STUDENT APK - CLASS TESTS
+// ==========================================
+
+// GET /student/class-tests
+exports.getStudentClassTests = async (userId, filters = {}) => {
+  const student = await getAuthenticatedStudent(userId);
+
+  if (!student.course_id || !student.batch_id) {
+    return {
+      rows: [],
+      total: 0,
+      page: 1,
+      limit: 20
+    };
+  }
+
+  const page = Math.max(parseInt(filters.page, 10) || 1, 1);
+  const limit = Math.min(
+    Math.max(parseInt(filters.limit, 10) || 20, 1),
+    100
+  );
+
+  // Students only see tests assigned to their own course and batch.
+  // Draft, cancelled and archived tests are excluded.
+  const query = {
+    course_id: student.course_id._id,
+    batch_id: student.batch_id._id,
+    deleted_at: null,
+    status: { $in: ['scheduled', 'completed'] }
+  };
+
+  if (filters.subject) {
+    query.subject = {
+      $regex: String(filters.subject).trim(),
+      $options: 'i'
+    };
+  }
+
+  if (filters.status) {
+    if (!['scheduled', 'completed'].includes(filters.status)) {
+      throw createError('Invalid class test status filter.', 400);
+    }
+
+    query.status = filters.status;
+  }
+
+  const [rows, total] = await Promise.all([
+    ClassTest.find(query)
+      .select(
+        'title description subject test_date max_marks passing_marks duration_minutes status'
+      )
+      .populate('faculty_id', 'name')
+      .sort({ test_date: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+
+    ClassTest.countDocuments(query)
+  ]);
+
+  return {
+    rows,
+    total,
+    page,
+    limit
+  };
+};
+
+// GET /student/class-tests/:id
+exports.getStudentClassTestById = async (userId, testId) => {
+  const student = await getAuthenticatedStudent(userId);
+
+  if (!student.course_id || !student.batch_id) {
+    throw createError('Student course or batch not found.', 404);
+  }
+
+  const test = await ClassTest.findOne({
+    _id: testId,
+    course_id: student.course_id._id,
+    batch_id: student.batch_id._id,
+    deleted_at: null,
+    status: { $in: ['scheduled', 'completed'] }
+  })
+    .select(
+      'title description subject test_date max_marks passing_marks duration_minutes status faculty_id createdAt'
+    )
+    .populate('faculty_id', 'name')
+    .lean();
+
+  if (!test) {
+    throw createError('Class test not found.', 404);
+  }
+
+  return test;
+};
+
+// ==========================================
 // DASHBOARD
 // ==========================================
 
-// GET /student/dashboard
 exports.getDashboard = async (userId) => {
   const student = await getAuthenticatedStudent(userId);
 
