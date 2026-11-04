@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router();
 
@@ -48,6 +49,22 @@ router.get(
 router.get(
   '/materials/:id/stream',
   materialController.streamVideo
+);
+
+// ==========================================
+// STUDENT APK - CLASS TESTS
+// ==========================================
+
+// List class tests assigned to the logged-in student's batch
+router.get(
+  '/class-tests',
+  studentAppController.getStudentClassTests
+);
+
+// Get individual class test details
+router.get(
+  '/class-tests/:id',
+  studentAppController.getStudentClassTestById
 );
 
 // ==========================================

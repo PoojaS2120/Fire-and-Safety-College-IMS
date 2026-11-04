@@ -66,7 +66,7 @@ exports.exportData = async (req, res, next) => {
       });
     }
 
-    const result = await config.exportHandler(req.query);
+    const result = await config.exportHandler(req.query, req.user);
 
     if (!Array.isArray(result)) {
       throw {

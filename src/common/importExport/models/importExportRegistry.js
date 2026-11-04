@@ -1,8 +1,11 @@
+
 const Book = require('../../../modules/library/models/Book');
 const bookImportExportHandler = require('../../../modules/library/services/bookImportExportHandler');
 
 const Student = require('../../../modules/students/models/Student');
 const studentImportExportHandler = require('../../../modules/students/services/studentImportExportHandler');
+
+const examImportExportHandler = require('../../../modules/exams/services/examImportExportHandler');
 
 const STUDENT_COLUMNS = [
   'student_id',
@@ -18,6 +21,19 @@ const STUDENT_COLUMNS = [
   'course_name',
   'batch_name',
   'admitted_on',
+];
+
+const EXAM_MARK_COLUMNS = [
+  'Student ID',
+  'Student Name',
+  'Exam Title',
+  'Subject',
+  'Exam Date',
+  'Maximum Marks',
+  'Passing Marks',
+  'Marks Obtained',
+  'Result',
+  'Remarks',
 ];
 
 const importExportRegistry = {
@@ -55,6 +71,13 @@ const importExportRegistry = {
       columns: STUDENT_COLUMNS,
       importHandler: studentImportExportHandler.importStudents,
       exportHandler: studentImportExportHandler.exportStudents,
+    },
+  },
+
+  exams: {
+    marks: {
+      columns: EXAM_MARK_COLUMNS,
+      exportHandler: examImportExportHandler.exportExamMarks,
     },
   },
 };
