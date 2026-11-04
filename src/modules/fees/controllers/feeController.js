@@ -233,11 +233,30 @@ exports.getPendingFees = async (req, res, next) => {
 exports.cancelPayment = async (req, res, next) => {
   try {
     const { reason } = req.body;
-    if (!reason) return res.status(400).json({ success: false, message: 'Cancel reason is required' });
 
-    const result = await feeService.cancelPayment(req.params.paymentId, reason, req.user.id, req.ip);
-    res.status(200).json({ success: true, message: result.message });
-  } catch (err) { next(err); }
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cancel reason is required'
+      });
+    }
+
+    const result = await feeService.cancelPayment(
+      req.params.paymentId,
+      reason,
+      req.user.id,
+      req.ip
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+
+  } catch (err) {
+    next(err);
+  }
 };
 
 // 8. STUDENT APP: Get Own Fees

@@ -1143,76 +1143,189 @@ exports.getPendingFeesList = async () => {
 
 // ================= 7. CANCEL PAYMENT =================
 
-exports.cancelPayment = async (paymentId, reason, adminId, ip) => {
-  const payment = await Payment.findById(paymentId);
 
-  if (!payment) {
-    throw {
-      statusCode: 404,
-      message: 'Payment not found'
-    };
-  }
-
-  if (payment.status === 'cancelled') {
+exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
+  // Validate input before starting the transaction.
+  if (!mongoose.Types.ObjectId.isValid(paymentId)) {
     throw {
       statusCode: 400,
-      message: 'Payment is already cancelled'
+      message: 'Invalid payment ID'
     };
   }
 
-  // 1. Mark payment as cancelled.
-  payment.status = 'cancelled';
-  payment.cancel_reason = reason;
-  payment.cancelled_by = adminId;
-
-  await payment.save();
-
-  // 2. Reverse the allocation from StudentFee.
-  let amountToReverse = payment.amount;
-
-  const paidFees = await StudentFee.find({
-    student_id: payment.student_id,
-    amount_paid: { $gt: 0 }
-  }).sort({ updatedAt: -1 });
-
-  for (const fee of paidFees) {
-    if (amountToReverse <= 0) break;
-
-    const reversibleAmount = Math.min(
-      fee.amount_paid,
-      amountToReverse
-    );
-
-    fee.amount_paid -= reversibleAmount;
-    amountToReverse -= reversibleAmount;
-
-    if (fee.amount_paid === 0) {
-      fee.status = 'pending';
-    } else if (fee.amount_paid < fee.amount_due) {
-      fee.status = 'partial';
-    }
-
-    await fee.save();
+  if (!mongoose.Types.ObjectId.isValid(adminId)) {
+    throw {
+      statusCode: 400,
+      message: 'Invalid admin ID'
+    };
   }
 
-  // 3. Log to Audit.
-  await auditService.logAction({
-    userId: adminId,
-    action: 'CANCEL_PAYMENT',
-    entity: 'Payment',
-    entityId: payment._id,
-    oldValues: {
-      status: 'active',
-      amount: payment.amount
-    },
-    newValues: {
-      status: 'cancelled',
-      reason
-    },
-    ip
-  });
+  if (typeof reason !== 'string' || !reason.trim()) {
+    throw {
+      statusCode: 400,
+      message: 'Cancellation reason is required'
+    };
+  }
 
-  return {
-    message: 'Payment cancelled and ledger reversed successfully'
-  };
+  const session = await mongoose.startSession();
+  let result;
+
+  try {
+    await session.withTransaction(async () => {
+      // 1. Fetch payment inside transaction.
+      const payment = await Payment.findById(paymentId).session(session);
+
+      if (!payment) {
+        throw {
+          statusCode: 404,
+          message: 'Payment not found'
+        };
+      }
+
+      if (payment.status === 'cancelled') {
+        throw {
+          statusCode: 409,
+          message: 'Payment is already cancelled'
+        };
+      }
+
+      // 2. Fetch the exact allocations of this payment.
+      const allocations = await PaymentAllocation.find({
+        payment_id: payment._id
+      }).session(session);
+
+      if (allocations.length === 0) {
+        throw {
+          statusCode: 409,
+          message: 'Payment allocations not found. Cancellation requires manual reconciliation.'
+        };
+      }
+
+      // 3. Verify allocation total matches payment amount.
+      const allocatedPaise = allocations.reduce(
+        (total, allocation) =>
+          total + Math.round(Number(allocation.amount) * 100),
+        0
+      );
+
+      const paymentPaise = Math.round(Number(payment.amount) * 100);
+
+      if (allocatedPaise !== paymentPaise) {
+        throw {
+          statusCode: 409,
+          message: 'Payment allocation total does not match payment amount'
+        };
+      }
+
+      // 4. Reverse each original allocation.
+      const reversedAllocations = [];
+
+      for (const allocation of allocations) {
+        const fee = await StudentFee.findById(
+          allocation.student_fee_id
+        ).session(session);
+
+        if (!fee) {
+          throw {
+            statusCode: 409,
+            message: `Fee ledger record not found for allocation ${allocation._id}`
+          };
+        }
+
+        if (
+          fee.student_id.toString() !== payment.student_id.toString()
+        ) {
+          throw {
+            statusCode: 409,
+            message: 'Payment allocation belongs to a different student'
+          };
+        }
+
+        const feePaidPaise = Math.round(
+          Number(fee.amount_paid) * 100
+        );
+
+        const allocationPaise = Math.round(
+          Number(allocation.amount) * 100
+        );
+
+        if (feePaidPaise < allocationPaise) {
+          throw {
+            statusCode: 409,
+            message: `Cannot reverse allocation for ${fee.fee_name}: paid amount is insufficient`
+          };
+        }
+
+        // Reverse the exact allocated amount.
+        fee.amount_paid =
+          (feePaidPaise - allocationPaise) / 100;
+
+        // Recalculate fee status.
+        if (fee.amount_paid <= 0) {
+          fee.amount_paid = 0;
+          fee.status = 'pending';
+        } else if (fee.amount_paid >= fee.amount_due) {
+          fee.status = 'paid';
+        } else {
+          fee.status = 'partial';
+        }
+
+        await fee.save({ session });
+
+        reversedAllocations.push({
+          student_fee_id: fee._id,
+          fee_name: fee.fee_name,
+          reversed_amount: allocationPaise / 100,
+          remaining_paid: fee.amount_paid,
+          status: fee.status
+        });
+      }
+
+      // 5. Mark payment as cancelled.
+      // Receipt number and payment record remain unchanged.
+      const oldValues = {
+        status: payment.status,
+        amount: payment.amount,
+        receipt_no: payment.receipt_no
+      };
+
+      payment.status = 'cancelled';
+      payment.cancel_reason = reason.trim();
+      payment.cancelled_by = adminId;
+
+      await payment.save({ session });
+
+      // 6. Record audit inside the same transaction.
+      await auditService.logAction({
+        userId: adminId,
+        action: 'CANCEL_PAYMENT',
+        entity: 'Payment',
+        entityId: payment._id,
+        oldValues,
+        newValues: {
+          status: 'cancelled',
+          amount: payment.amount,
+          receipt_no: payment.receipt_no,
+          reason: reason.trim(),
+          reversed_allocations: reversedAllocations
+        },
+        ip,
+        session
+      });
+
+      result = {
+        payment_id: payment._id,
+        receipt_no: payment.receipt_no,
+        status: payment.status,
+        cancel_reason: payment.cancel_reason,
+        reversed_allocations: reversedAllocations,
+        message: 'Payment cancelled and original allocations reversed successfully'
+      };
+    });
+
+    return result;
+
+  } finally {
+    await session.endSession();
+  }
 };

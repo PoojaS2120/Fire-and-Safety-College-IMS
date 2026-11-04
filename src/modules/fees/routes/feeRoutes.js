@@ -62,7 +62,7 @@ router.get(
 );
 
 // Cancel Payment
-router.patch(
+router.put(
   '/payments/:paymentId/cancel',
   verifyToken,
   authorize('super_admin'),
