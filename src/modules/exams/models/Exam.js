@@ -45,7 +45,7 @@ const examSchema = new mongoose.Schema(
     // Oral or Written examination
     exam_type: {
       type: String,
-      enum: ['oral', 'written'],
+      enum: ['oral', 'written', 'practical', 'online'],
       required: [true, 'Exam type is required'],
       lowercase: true,
       trim: true,
