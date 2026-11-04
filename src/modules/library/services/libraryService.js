@@ -328,3 +328,50 @@ exports.deleteBook = async (id) => {
 
   return book;
 };
+// ============ STUDENT SELF-HISTORY ============
+exports.getMyBorrowedBooks = async (userId) => {
+  const Student = require('../../students/models/Student');
+
+  const student = await Student.findOne({ user_id: userId }).select('_id');
+  if (!student) {
+    throw { statusCode: 404, message: 'Student profile not found' };
+  }
+
+  // Currently issued (not returned)
+  const current = await BookIssue.find({
+    student: student._id,
+    status: 'issued',
+  })
+    .populate('book', 'title author bookCode')
+    .sort({ dueDate: 1 });
+
+  // Past (returned)
+  const history = await BookIssue.find({
+    student: student._id,
+    status: 'returned',
+  })
+    .populate('book', 'title author bookCode')
+    .sort({ returnDate: -1 });
+
+  const today = new Date();
+
+  const currentWithOverdue = current.map((issue) => ({
+    _id: issue._id,
+    book: issue.book,
+    issueDate: issue.issueDate,
+    dueDate: issue.dueDate,
+    status: issue.status,
+    is_overdue: new Date(issue.dueDate) < today,
+    days_overdue:
+      new Date(issue.dueDate) < today
+        ? Math.floor((today - new Date(issue.dueDate)) / (1000 * 60 * 60 * 24))
+        : 0,
+  }));
+
+  return {
+    currently_issued: currentWithOverdue,
+    past_returns: history,
+    total_issued: current.length,
+    total_overdue: currentWithOverdue.filter((i) => i.is_overdue).length,
+  };
+};

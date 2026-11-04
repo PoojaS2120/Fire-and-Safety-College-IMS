@@ -154,3 +154,9 @@ exports.getStudentHistory = async (req, res, next) => {
     res.status(200).json({ success: true, data });
   } catch (error) { next(error); }
 };
+exports.getMyBorrowedBooks = async (req, res, next) => {
+  try {
+    const data = await libraryService.getMyBorrowedBooks(req.user.id);
+    res.status(200).json({ success: true, data });
+  } catch (error) { next(error); }
+};

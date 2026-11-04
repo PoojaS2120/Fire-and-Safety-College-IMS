@@ -63,5 +63,11 @@ router.get(
   authorize('super_admin', 'office_staff', 'librarian', 'student'),
   libraryController.getStudentHistory
 );
+// Student: own borrowing history (currently issued + past)
+router.get(
+  '/my-books',
+  authorize('student'),
+  libraryController.getMyBorrowedBooks
+);
 
 module.exports = router;
