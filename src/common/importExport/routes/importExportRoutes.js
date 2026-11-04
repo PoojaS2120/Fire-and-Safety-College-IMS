@@ -12,10 +12,15 @@ router.use(verifyToken);
 
 // Role-based authorization
 const authorizeImportExport = (req, res, next) => {
-  const allowedRoles =
-    req.params.moduleName === 'students'
-      ? ['super_admin', 'office_staff']
-      : ['super_admin', 'office_staff', 'librarian'];
+  let allowedRoles;
+
+  if (req.params.moduleName === 'students') {
+    allowedRoles = ['super_admin', 'office_staff'];
+  } else if (req.params.moduleName === 'exams') {
+    allowedRoles = ['super_admin', 'office_staff', 'faculty'];
+  } else {
+    allowedRoles = ['super_admin', 'office_staff', 'librarian'];
+  }
 
   return authorize(...allowedRoles)(req, res, next);
 };
