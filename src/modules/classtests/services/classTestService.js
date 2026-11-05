@@ -208,6 +208,41 @@ const getMarkRecord = async (testId, studentId) => {
   return mark;
 };
 
+const getClassTestMarksRows = async test => {
+  const [students, marks] = await Promise.all([
+    Student.find({
+      course_id: test.course_id,
+      batch_id: test.batch_id,
+      status: 'active'
+    })
+      .select('_id student_id full_name')
+      .sort({ full_name: 1 })
+      .lean(),
+
+    ClassTestMark.find({
+      class_test_id: test._id
+    }).lean()
+  ]);
+
+  const marksMap = new Map(
+    marks.map(mark => [
+      String(mark.student_id),
+      mark
+    ])
+  );
+
+  return students.map(student => {
+    const mark = marksMap.get(String(student._id));
+
+    return {
+      student_id: student.student_id || '',
+      student_name: student.full_name || '',
+      marks_obtained: mark?.marks_obtained ?? null,
+      remarks: mark?.remarks || ''
+    };
+  });
+};
+
 // =====================================================
 // 1. CREATE CLASS TEST
 // =====================================================
@@ -336,6 +371,33 @@ exports.getClassTest = async (id, user) => {
   checkReadPermission(test, user);
 
   return test;
+};
+// =====================================================
+// GET CLASS TEST MARKS
+// =====================================================
+
+exports.getMarks = async (id, user) => {
+  const test = await getTest(id);
+
+  checkReadPermission(test, user);
+
+  const marks = await getClassTestMarksRows(test);
+
+  return {
+    class_test: {
+      _id: test._id,
+      title: test.title,
+      subject: test.subject,
+      max_marks: test.max_marks,
+      passing_marks: test.passing_marks,
+      test_date: test.test_date
+    },
+    total_students: marks.length,
+    marks_entered: marks.filter(
+      mark => mark.marks_obtained !== null
+    ).length,
+    data: marks
+  };
 };
 
 // =====================================================
@@ -925,24 +987,19 @@ exports.exportMarks = async (
 
   checkReadPermission(test, user);
 
-  const marks = await ClassTestMark.find({
-    class_test_id: test._id
-  })
-    .populate('student_id', 'student_id full_name')
-    .sort({ createdAt: 1 })
-    .lean();
+  const marks = await getClassTestMarksRows(test);
 
   const includeRemarks = options.include_remarks !== false;
 
   const rows = marks.map(mark => {
     const row = {
-      student_id: mark.student_id?.student_id || '',
-      full_name: mark.student_id?.full_name || '',
-      marks_obtained: mark.marks_obtained
+      student_id: mark.student_id,
+      student_name: mark.student_name,
+      marks_obtained: mark.marks_obtained ?? ''
     };
 
     if (includeRemarks) {
-      row.remarks = mark.remarks || '';
+      row.remarks = mark.remarks;
     }
 
     return row;
@@ -951,13 +1008,13 @@ exports.exportMarks = async (
   const columns = includeRemarks
     ? [
         'student_id',
-        'full_name',
+        'student_name',
         'marks_obtained',
         'remarks'
       ]
     : [
         'student_id',
-        'full_name',
+        'student_name',
         'marks_obtained'
       ];
 

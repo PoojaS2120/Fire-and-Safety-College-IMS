@@ -32,13 +32,12 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5 MB
+    fileSize: 5 * 1024 * 1024,
   },
 });
 
 // --------------------------------------------------
 // AUTHENTICATION
-// All routes require a valid access token
 // --------------------------------------------------
 
 router.use(verifyToken);
@@ -47,35 +46,30 @@ router.use(verifyToken);
 // CLASS TEST CRUD
 // --------------------------------------------------
 
-// Create a class test
 router.post(
   '/',
   authorize('super_admin', 'faculty'),
   classTestController.createClassTest
 );
 
-// Get all class tests
 router.get(
   '/',
   authorize('super_admin', 'office_staff', 'faculty'),
   classTestController.getAllClassTests
 );
 
-// Get class test by ID
 router.get(
   '/:id',
   authorize('super_admin', 'office_staff', 'faculty'),
   classTestController.getClassTestById
 );
 
-// Update class test
 router.put(
   '/:id',
   authorize('super_admin', 'faculty'),
   classTestController.updateClassTest
 );
 
-// Delete class test
 router.delete(
   '/:id',
   authorize('super_admin', 'faculty'),
@@ -85,6 +79,13 @@ router.delete(
 // --------------------------------------------------
 // STUDENT MARKS
 // --------------------------------------------------
+
+// Get all students and their class test marks
+router.get(
+  '/:id/marks',
+  authorize('super_admin', 'office_staff', 'faculty'),
+  classTestController.getMarks
+);
 
 // Bulk enter marks
 router.post(
@@ -118,7 +119,6 @@ router.get(
 // IMPORT / EXPORT
 // --------------------------------------------------
 
-// Import marks from Excel or CSV
 router.post(
   '/:id/marks/import',
   authorize('super_admin', 'faculty'),
@@ -126,14 +126,12 @@ router.post(
   classTestController.importMarks
 );
 
-// Export marks as Excel or CSV
 router.get(
   '/:id/marks/export',
   authorize('super_admin', 'office_staff', 'faculty'),
   classTestController.exportMarks
 );
 
-// Download import template
 router.get(
   '/:id/marks/template',
   authorize('super_admin', 'faculty'),

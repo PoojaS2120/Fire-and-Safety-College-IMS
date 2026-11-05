@@ -54,11 +54,21 @@ router.get(
 // ==========================================
 // STUDENT APK - CLASS TESTS
 // ==========================================
+// ==========================================
+// STUDENT APK - CLASS TESTS
+// ==========================================
 
-// List class tests assigned to the logged-in student's batch
+// List class tests
 router.get(
   '/class-tests',
   studentAppController.getStudentClassTests
+);
+
+// Get class test marks
+// IMPORTANT: Keep this before /class-tests/:id
+router.get(
+  '/class-tests/marks',
+  studentAppController.getClassTestMarks
 );
 
 // Get individual class test details
@@ -67,6 +77,14 @@ router.get(
   studentAppController.getStudentClassTestById
 );
 
+// ==========================================
+// STUDENT APK - EXAM RESULTS
+// ==========================================
+
+router.get(
+  '/results',
+  studentAppController.getStudentExamResults
+);
 // ==========================================
 // FEES
 // ==========================================
