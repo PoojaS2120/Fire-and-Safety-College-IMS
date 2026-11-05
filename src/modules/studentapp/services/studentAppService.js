@@ -2,6 +2,9 @@
 const Student = require('../../students/models/Student');
 const ClassSchedule = require('../../classschedules/models/ClassSchedule');
 const ClassTest = require('../../classtests/models/ClassTest');
+const ClassTestMark = require('../../classtests/models/ClassTestMark');
+const Exam = require('../../exams/models/Exam');
+const ExamMark = require('../../exams/models/ExamMark');
 const materialService = require('../../materials/services/materialService');
 const libraryService = require('../../library/services/libraryService');
 const Notice = require('../../notices/models/Notice');
@@ -26,6 +29,79 @@ const getAuthenticatedStudent = async (userId) => {
   return student;
 };
 
+// GET /student/class-tests/marks
+// Fetch only the authenticated student's class test marks.
+
+exports.getClassTestMarks = async (userId) => {
+  const student = await getAuthenticatedStudent(userId);
+
+  if (!student.course_id || !student.batch_id) {
+    throw createError('Student course or batch not found.', 404);
+  }
+
+  const courseId = student.course_id._id || student.course_id;
+  const batchId = student.batch_id._id || student.batch_id;
+
+  const classTests = await ClassTest.find({
+    course_id: courseId,
+    batch_id: batchId,
+    deleted_at: null,
+    status: { $nin: ['draft', 'cancelled', 'archived'] }
+  })
+    .select(
+      'title subject test_date max_marks passing_marks status'
+    )
+    .sort({ test_date: -1 })
+    .lean();
+
+  const marks = await ClassTestMark.find({
+    student_id: student._id,
+    class_test_id: { $in: classTests.map(test => test._id) }
+  })
+    .select('class_test_id marks_obtained remarks')
+    .lean();
+
+  const marksMap = new Map(
+    marks.map(mark => [
+      String(mark.class_test_id),
+      mark
+    ])
+  );
+
+  const results = classTests.map(test => {
+    const mark = marksMap.get(String(test._id));
+    const marksObtained = mark?.marks_obtained ?? null;
+
+    return {
+      class_test_id: test._id,
+      title: test.title,
+      subject: test.subject,
+      test_date: test.test_date,
+      max_marks: test.max_marks,
+      passing_marks: test.passing_marks,
+      status: test.status,
+      marks_obtained: marksObtained,
+      remarks: mark?.remarks || '',
+      result: marksObtained === null
+        ? 'pending'
+        : marksObtained >= test.passing_marks
+          ? 'pass'
+          : 'fail'
+    };
+  });
+
+  return {
+    student: {
+      student_id: student.student_id,
+      full_name: student.full_name
+    },
+    total_tests: results.length,
+    marks_available: results.filter(
+      item => item.marks_obtained !== null
+    ).length,
+    data: results
+  };
+};
 // ==========================================
 // PROFILE
 // ==========================================
@@ -407,4 +483,110 @@ exports.getStudentBatchNotices = async (userId, filters = {}) => {
   ]);
 
   return { rows, total, page, limit };
+};
+// ==========================================
+// STUDENT APK - EXAM RESULTS
+// ==========================================
+
+// GET /student/results
+// Students can view only their own published exam results.
+
+exports.getStudentExamResults = async (userId) => {
+  const student = await getAuthenticatedStudent(userId);
+
+  if (!student.course_id || !student.batch_id) {
+    return {
+      student: {
+        student_id: student.student_id,
+        full_name: student.full_name
+      },
+      total_exams: 0,
+      data: []
+    };
+  }
+
+  const courseId = student.course_id._id;
+  const batchId = student.batch_id._id;
+
+  // Fetch only published exams belonging to this student's course and batch.
+  const exams = await Exam.find({
+    course_id: courseId,
+    batch_id: batchId,
+    result_status: 'published',
+    deleted_at: null
+  })
+    .select(
+      'title subject exam_type exam_date max_marks passing_marks result_status published_at'
+    )
+    .sort({ exam_date: -1 })
+    .lean();
+
+  if (!exams.length) {
+    return {
+      student: {
+        student_id: student.student_id,
+        full_name: student.full_name
+      },
+      total_exams: 0,
+      data: []
+    };
+  }
+
+  // Fetch only the authenticated student's marks.
+  const marks = await ExamMark.find({
+    student_id: student._id,
+    exam_id: { $in: exams.map(exam => exam._id) }
+  })
+    .select('exam_id marks_obtained remarks')
+    .lean();
+
+  const marksMap = new Map(
+    marks.map(mark => [
+      String(mark.exam_id),
+      mark
+    ])
+  );
+
+  // Build result response.
+  const results = exams
+    .map(exam => {
+      const mark = marksMap.get(String(exam._id));
+
+      // Do not expose exams for which this student has no marks entry.
+      if (!mark) return null;
+
+      const marksObtained = Number(mark.marks_obtained);
+      const maxMarks = Number(exam.max_marks);
+      const passingMarks = Number(exam.passing_marks);
+
+      const percentage = maxMarks > 0
+        ? Number(((marksObtained / maxMarks) * 100).toFixed(2))
+        : 0;
+
+      return {
+        exam_id: exam._id,
+        title: exam.title,
+        subject: exam.subject,
+        exam_type: exam.exam_type,
+        exam_date: exam.exam_date,
+        marks_obtained: marksObtained,
+        max_marks: maxMarks,
+        passing_marks: passingMarks,
+        percentage,
+        result: marksObtained >= passingMarks ? 'PASS' : 'FAIL',
+        remarks: mark.remarks || null,
+        result_status: exam.result_status,
+        published_at: exam.published_at
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    student: {
+      student_id: student.student_id,
+      full_name: student.full_name
+    },
+    total_exams: results.length,
+    data: results
+  };
 };

@@ -112,6 +112,25 @@ exports.getClassTestById = asyncHandler(async (req, res) => {
 });
 
 // ==========================================
+// GET CLASS TEST MARKS
+// GET /api/v1/class-tests/:id/marks
+// ==========================================
+
+exports.getMarks = asyncHandler(async (req, res) => {
+  const result = await classTestService.getMarks(
+    req.params.id,
+    req.user
+  );
+
+  return sendSuccess(
+    res,
+    200,
+    'Class test marks fetched successfully',
+    result
+  );
+});
+
+// ==========================================
 // 4. UPDATE CLASS TEST
 // PUT /api/v1/class-tests/:id
 // ==========================================

@@ -133,7 +133,23 @@ exports.getStudentClassTestById = async (req, res, next) => {
     next(error);
   }
 };
+// GET /student/class-tests/marks
 
+exports.getClassTestMarks = async (req, res, next) => {
+  try {
+    const data = await studentAppService.getClassTestMarks(
+      req.user.id
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Student class test marks fetched successfully.',
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 // ==========================================
 // DASHBOARD
 // ==========================================
@@ -254,6 +270,26 @@ exports.getStudentBatchNotices = async (req, res, next) => {
         total: result.total,
         totalPages: Math.ceil(result.total / result.limit)
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+// ==========================================
+// STUDENT APK - EXAM RESULTS
+// ==========================================
+
+// GET /student/results
+exports.getStudentExamResults = async (req, res, next) => {
+  try {
+    const data = await studentAppService.getStudentExamResults(
+      req.user.id
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Exam results fetched successfully.',
+      data
     });
   } catch (error) {
     next(error);
