@@ -43,6 +43,6 @@ exports.updateStatusSchema = Joi.object({
 // ---------- ISSUE BOOK ----------
 exports.issueBookSchema = Joi.object({
   bookId: objectId.required(),
-  studentId: objectId.required(),
+  studentName: Joi.string().trim().min(2).max(150).required(),
   dueDate: Joi.date().iso().required()
 });

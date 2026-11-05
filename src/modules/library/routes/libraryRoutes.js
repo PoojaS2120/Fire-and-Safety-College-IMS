@@ -15,8 +15,11 @@ router.get(
 );
 router.post('/categories', authorize('super_admin', 'librarian'), libraryController.createCategory);
 router.put('/categories/:id', authorize('super_admin', 'librarian'), libraryController.updateCategory);
-router.delete('/categories/:id', authorize('super_admin'), libraryController.deleteCategory);
-
+router.delete(
+  '/categories/:id',
+  authorize('super_admin', 'librarian'),
+  libraryController.deleteCategory
+);
 // ---------- BOOKS ----------
 router.get(
   '/books',
@@ -31,8 +34,11 @@ router.get(
 );
 router.put('/books/:id', authorize('super_admin', 'librarian'), libraryController.updateBook);
 router.put('/books/:id/status', authorize('super_admin', 'librarian'), libraryController.updateStatus);
-router.delete('/books/:id', authorize('super_admin'), libraryController.deleteBook);
-
+router.delete(
+  '/books/:id',
+  authorize('super_admin', 'librarian'),
+  libraryController.deleteBook
+);
 // ---------- ISSUES ----------
 router.post('/issues', authorize('super_admin', 'librarian'), libraryController.issueBook);
 router.put('/issues/:id/return', authorize('super_admin', 'librarian'), libraryController.returnBook);

@@ -159,42 +159,87 @@ exports.updateStatus = async (id, status) => {
 };
 
 // ---------- ISSUES ----------
+// ---------- ISSUE BOOK ----------
 exports.issueBook = async (data, issuedByUserId) => {
-  // Step 1: Atomically reserve a copy (decrement stock)
+
+  // Step 1: Find student using full name (case-insensitive)
+  const students = await Student.find({
+    full_name: data.studentName.trim()
+  })
+    .collation({ locale: 'en', strength: 2 })
+    .select('_id full_name student_id email status');
+
+  if (!students.length) {
+    throw {
+      statusCode: 404,
+      message: `Student not found: ${data.studentName}`
+    };
+  }
+
+  // Prevent issuing to the wrong student if names are duplicated
+  if (students.length > 1) {
+    throw {
+      statusCode: 409,
+      message: 'Multiple students found with this name. Please use a unique student name.'
+    };
+  }
+
+  const student = students[0];
+
+  // Step 2: Check student status
+  if (student.status !== 'active') {
+    throw {
+      statusCode: 400,
+      message: `Cannot issue book. Student status is ${student.status}.`
+    };
+  }
+
+  // Step 3: Atomically reserve a copy
   const book = await Book.findOneAndUpdate(
     {
       _id: data.bookId,
       availableQty: { $gt: 0 },
-      status: 'active',
+      status: 'active'
     },
-    { $inc: { availableQty: -1 } },
-    { returnDocument: 'after' }
+    {
+      $inc: { availableQty: -1 }
+    },
+    {
+      returnDocument: 'after'
+    }
   );
 
   if (!book) {
     throw {
       statusCode: 400,
-      message: 'Book not available or out of stock',
+      message: 'Book not available or out of stock'
     };
   }
 
-  // Step 2: Create the issue record (with rollback on failure)
+  // Step 4: Create issue record
   try {
     const issue = await BookIssue.create({
       book: data.bookId,
-      student: data.studentId,
+      student: student._id,
       issueDate: new Date(),
       dueDate: new Date(data.dueDate),
-      issuedBy: issuedByUserId,
+      issuedBy: issuedByUserId
     });
 
+    // Step 5: Return populated details
     return await BookIssue.findById(issue._id)
       .populate('book', 'title author bookCode')
       .populate('student', 'full_name student_id email')
       .populate('issuedBy', 'name');
+
   } catch (err) {
-    // ROLLBACK: restore the stock
-    await Book.findByIdAndUpdate(data.bookId, { $inc: { availableQty: 1 } });
+
+    // Rollback stock if issue creation fails
+    await Book.findByIdAndUpdate(
+      data.bookId,
+      { $inc: { availableQty: 1 } }
+    );
+
     throw err;
   }
 };
@@ -303,31 +348,9 @@ exports.deleteCategory = async (id) => {
   return cat;
 };
 
-exports.deleteBook = async (id) => {
-  const activeIssues = await BookIssue.countDocuments({
-    book: id,
-    status: 'issued',
-  });
 
-  if (activeIssues > 0) {
-    throw {
-      statusCode: 400,
-      message: 'Cannot delete book because it is currently issued. Please return it first.',
-    };
-  }
 
-  const book = await Book.findByIdAndUpdate(
-    id,
-    { status: 'retired' },
-    { returnDocument: 'after' }
-  );
 
-  if (!book) {
-    throw { statusCode: 404, message: 'Book not found' };
-  }
-
-  return book;
-};
 // ============ STUDENT SELF-HISTORY ============
 exports.getMyBorrowedBooks = async (userId) => {
   const Student = require('../../students/models/Student');
@@ -374,4 +397,35 @@ exports.getMyBorrowedBooks = async (userId) => {
     total_issued: current.length,
     total_overdue: currentWithOverdue.filter((i) => i.is_overdue).length,
   };
+};
+// ---------- SOFT DELETE BOOK ----------
+exports.deleteBook = async (id) => {
+  // Check whether the book has active issues
+  const activeIssues = await BookIssue.countDocuments({
+    book: id,
+    status: 'issued'
+  });
+
+  if (activeIssues > 0) {
+    throw {
+      statusCode: 400,
+      message: 'Cannot delete book because it is currently issued. Please return it first.'
+    };
+  }
+
+  // Retire the book instead of permanently deleting it
+  const book = await Book.findByIdAndUpdate(
+    id,
+    { status: 'retired' },
+    { returnDocument: 'after' }
+  );
+
+  if (!book) {
+    throw {
+      statusCode: 404,
+      message: 'Book not found'
+    };
+  }
+
+  return book;
 };
