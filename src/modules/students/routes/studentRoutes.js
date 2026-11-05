@@ -1,4 +1,3 @@
-
 // const express = require('express');
 // const router = express.Router();
 
@@ -7,33 +6,21 @@
 
 // const studentController = require('../controllers/studentController');
 
-// // All student routes require authentication and an allowed role.
-// router.use(
-//   verifyToken,
-//   authorize('super_admin', 'office_staff')
-// );
+// router.use(verifyToken, authorize('super_admin', 'office_staff'));
 
-// // POST /api/v1/students
 // router.post('/', studentController.createStudent);
-
-// // GET /api/v1/students
 // router.get('/', studentController.getStudents);
-
-// // GET /api/v1/students/:id
+// router.get('/:id/summary', studentController.getStudentSummary);
+// router.get('/:id/stage-history', studentController.getStudentStageHistory);
 // router.get('/:id', studentController.getStudentById);
 
-// // PUT /api/v1/students/:id
-// router.put('/:id', studentController.updateStudent);
-// // PUT /api/v1/students/:id/stage
+// router.put('/:id/assign', studentController.assignCourseAndBatch);
 // router.put('/:id/stage', studentController.updateStudentStage);
-// // PATCH /api/v1/students/:id/status
+// router.put('/:id', studentController.updateStudent);
+
 // router.patch('/:id/status', studentController.updateStudentStatus);
-// // GET /api/v1/students/:id/stage-history
-// router.get('/:id/stage-history', studentController.getStudentStageHistory);
 
 // module.exports = router;
-
-
 
 const express = require('express');
 const router = express.Router();
@@ -43,18 +30,26 @@ const { authorize } = require('../../../middlewares/authorize');
 
 const studentController = require('../controllers/studentController');
 
-router.use(verifyToken, authorize('super_admin', 'office_staff'));
+// Base auth for all routes in this file
+router.use(verifyToken);
 
-router.post('/', studentController.createStudent);
-router.get('/', studentController.getStudents);
-router.get('/:id/summary', studentController.getStudentSummary);
-router.get('/:id/stage-history', studentController.getStudentStageHistory);
-router.get('/:id', studentController.getStudentById);
+// 🚨 FIX: Allow faculty to view the student list (needed for marks entry)
+router.get(
+  '/', 
+  authorize('super_admin', 'office_staff', 'faculty'), 
+  studentController.getStudents
+);
 
-router.put('/:id/assign', studentController.assignCourseAndBatch);
-router.put('/:id/stage', studentController.updateStudentStage);
-router.put('/:id', studentController.updateStudent);
+// Restrict all other modification routes to Admin/Staff
+router.post('/', authorize('super_admin', 'office_staff'), studentController.createStudent);
+router.get('/:id/summary', authorize('super_admin', 'office_staff'), studentController.getStudentSummary);
+router.get('/:id/stage-history', authorize('super_admin', 'office_staff'), studentController.getStudentStageHistory);
+router.get('/:id', authorize('super_admin', 'office_staff'), studentController.getStudentById);
 
-router.patch('/:id/status', studentController.updateStudentStatus);
+router.put('/:id/assign', authorize('super_admin', 'office_staff'), studentController.assignCourseAndBatch);
+router.put('/:id/stage', authorize('super_admin', 'office_staff'), studentController.updateStudentStage);
+router.put('/:id', authorize('super_admin', 'office_staff'), studentController.updateStudent);
+
+router.patch('/:id/status', authorize('super_admin', 'office_staff'), studentController.updateStudentStatus);
 
 module.exports = router;

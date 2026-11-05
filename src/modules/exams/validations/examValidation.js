@@ -23,7 +23,7 @@ const createExamSchema = Joi.object({
   subject: Joi.string().trim().max(100).required(),
 
   exam_type: Joi.string()
-    .valid('oral', 'written')
+    .valid('oral', 'written', 'practical', 'online')
     .required(),
 
   exam_date: Joi.date().iso().required(),
@@ -76,7 +76,7 @@ const updateExamSchema = Joi.object({
 
   subject: Joi.string().trim().max(100),
 
-  exam_type: Joi.string().valid('oral', 'written'),
+  exam_type: Joi.string().valid('oral', 'written', 'practical' , 'online'),
 
   exam_date: Joi.date().iso(),
 
@@ -113,7 +113,7 @@ const listExamSchema = Joi.object({
   faculty_id: objectId.optional(),
 
   exam_type: Joi.string()
-    .valid('oral', 'written')
+    .valid('oral', 'written', 'practical', 'online')
     .optional(),
 
   status: Joi.string()

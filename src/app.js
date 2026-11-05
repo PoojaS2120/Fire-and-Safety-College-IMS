@@ -265,6 +265,13 @@ app.use(
   '/api/v1/import-export',
   require('./common/importExport/routes/importExportRoutes')
 );
+//DASHBOARD
+
+app.use('/api/v1/dashboard', require('./modules/dashboard/routes/dashboardRoutes'));
+
+//EXCEL REPORTS 
+
+app.use('/api/v1/reports', require('./modules/reports/routes/reportRoutes'));
 
 // ============================================================
 // STUDENT APP ROUTES

@@ -1,3 +1,74 @@
+// const Joi = require('joi');
+
+// const objectId = Joi.string().hex().length(24);
+
+// const GENDERS = ['male', 'female', 'other'];
+// const LIFECYCLE_STAGES = [
+//   'enquiry', 'admission', 'documents', 'fees', 'material', 'schedule',
+//   'class_test', 'exam', 'exam_form', 'test', 'result', 'tc_lc',
+// ];
+// const STAGE_STATUSES = ['pending', 'in_progress', 'completed', 'blocked'];
+// const STUDENT_STATUSES = ['active', 'completed', 'left', 'tc_issued', 'deactive'];
+
+// // CREATE — student_id is auto-generated
+// exports.createStudentSchema = Joi.object({
+//   full_name: Joi.string().trim().min(2).max(150).required(),
+//   dob: Joi.date().iso().less('now').required(),
+//   gender: Joi.string().valid(...GENDERS).allow(null).optional(),
+//   phone: Joi.string().trim().pattern(/^[0-9+\-\s()]{7,15}$/).required(),
+//   email: Joi.string().trim().email().max(200).allow('', null).optional(),
+//   address: Joi.string().trim().min(1).required(),
+//   guardian_name: Joi.string().trim().max(150).allow('', null).optional(),
+//   guardian_phone: Joi.string().trim().pattern(/^[0-9+\-\s()]{7,15}$/).allow('', null).optional(),
+//   qualification: Joi.string().trim().max(150).required(),
+//   course_id: objectId.required(),
+//   batch_id: objectId.allow('', null).optional(),
+//   admitted_on: Joi.date().iso().required(),
+// }).unknown(false);
+
+// exports.updateStudentSchema = Joi.object({
+//   full_name: Joi.string().trim().min(2).max(150).optional(),
+//   dob: Joi.date().iso().less('now').optional(),
+//   gender: Joi.string().valid(...GENDERS).allow(null).optional(),
+//   phone: Joi.string().trim().pattern(/^[0-9+\-\s()]{7,15}$/).optional(),
+//   email: Joi.string().trim().email().max(200).allow('', null).optional(),
+//   address: Joi.string().trim().min(1).optional(),
+//   guardian_name: Joi.string().trim().max(150).allow('', null).optional(),
+//   guardian_phone: Joi.string().trim().pattern(/^[0-9+\-\s()]{7,15}$/).allow('', null).optional(),
+//   qualification: Joi.string().trim().max(150).optional(),
+//   course_id: objectId.optional(),
+//   batch_id: objectId.allow('', null).optional(),
+// }).min(1).unknown(false);
+
+// exports.updateStudentStatusSchema = Joi.object({
+//   status: Joi.string().valid(...STUDENT_STATUSES).required(),
+// }).unknown(false);
+
+// exports.listStudentsSchema = Joi.object({
+//   page: Joi.number().integer().min(1).default(1),
+//   limit: Joi.number().integer().min(1).max(100).default(10),
+//   q: Joi.string().trim().max(150).allow('').optional(),
+//   search: Joi.string().trim().max(150).allow('').optional(),
+//   status: Joi.string().valid(...STUDENT_STATUSES).optional(),
+//   lifecycle_stage: Joi.string().valid(...LIFECYCLE_STAGES).optional(),
+//   stage_status: Joi.string().valid(...STAGE_STATUSES).optional(),
+//   courseId: objectId.optional(),
+//   batchId: objectId.optional(),
+// }).unknown(false);
+
+// exports.updateStudentStageSchema = Joi.object({
+//   lifecycle_stage: Joi.string().valid(...LIFECYCLE_STAGES).required(),
+//   stage_status: Joi.string().valid(...STAGE_STATUSES).required(),
+//   remarks: Joi.string().trim().max(500).allow('', null).optional(),
+// }).unknown(false);
+
+// exports.assignCourseSchema = Joi.object({
+//   course_id: objectId.required(),
+//   batch_id: objectId.allow('', null).optional(),
+// }).unknown(false);
+
+
+
 const Joi = require('joi');
 
 const objectId = Joi.string().hex().length(24);
@@ -54,6 +125,9 @@ exports.listStudentsSchema = Joi.object({
   stage_status: Joi.string().valid(...STAGE_STATUSES).optional(),
   courseId: objectId.optional(),
   batchId: objectId.optional(),
+  
+  // 🚨 FIX: Added batch_id so the frontend request doesn't fail
+  batch_id: objectId.optional(), 
 }).unknown(false);
 
 exports.updateStudentStageSchema = Joi.object({
