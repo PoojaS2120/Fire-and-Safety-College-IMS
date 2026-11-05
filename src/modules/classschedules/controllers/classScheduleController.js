@@ -1,4 +1,5 @@
 const classScheduleService = require('../services/classScheduleService');
+const classScheduleImportService = require('../services/classScheduleImportService');
 
 const {
   createScheduleSchema,
@@ -118,6 +119,30 @@ exports.cancelSchedule = async (req, res, next) => {
       success: true,
       message: 'Class schedule cancelled successfully',
       data: schedule,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ==========================================================
+// IMPORT (NEW)
+// ==========================================================
+exports.importSchedules = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Please upload an Excel file' });
+    }
+
+    const result = await classScheduleImportService.importSchedules(
+      req.file.buffer,
+      req.user.id
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Import process completed',
+      data: result,
     });
   } catch (err) {
     next(err);
