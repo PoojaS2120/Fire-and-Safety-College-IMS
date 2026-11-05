@@ -1,9 +1,40 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
 
 const classScheduleController = require('../controllers/classScheduleController');
 const { verifyToken } = require('../../../middlewares/auth');
 const { authorize } = require('../../../middlewares/authorize');
+
+// Setup Multer for in-memory Excel parsing
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.xlsx', '.xls', '.csv'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!allowed.includes(ext)) {
+      return cb(new Error('Only Excel (.xlsx) or CSV files are allowed'));
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+});
+
+// ==========================================================
+// BULK IMPORT (Must be before /:id routes)
+// ==========================================================
+router.post(
+  '/import',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  upload.single('file'),
+  classScheduleController.importSchedules
+);
+
+// ==========================================================
+// STANDARD CRUD
+// ==========================================================
 
 // Create — super_admin or faculty (faculty must be assigned)
 router.post(

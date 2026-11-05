@@ -296,8 +296,8 @@ exports.getSummary = async (user) => {
 
       // Bottom Lists
       Course.find().sort({ createdAt: -1 }).limit(3).select('name duration').lean(),
-      ClassSchedule.find({ date: { $gte: todayStart }, status: 'scheduled' })
-        .sort({ start_time: 1 }).limit(3).populate('subject', 'name').lean()
+       ClassSchedule.find({ date: { $gte: todayStart }, status: 'scheduled' })
+        .sort({ start_time: 1 }).limit(3).lean(),
     ]);
 
     // Safely fetch optional lists
@@ -329,9 +329,9 @@ exports.getSummary = async (user) => {
         bookTitles, issuedNow, overdueBooks
       },
       usersByRole,
-      lists: {
+     lists: {
         recentCourses,
-        upcomingClasses: upcomingClasses.map(c => ({ ...c, subject: c.subject?.name || 'Unknown' })),
+        upcomingClasses, // Just pass the array directly!
         upcomingTests,
         recentNotices
       }
