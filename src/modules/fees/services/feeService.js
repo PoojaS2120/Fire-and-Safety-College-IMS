@@ -729,7 +729,8 @@ exports.recordPayment = async (
   reference_no,
   staffId,
   paymentDate = new Date(),
-  ip = null
+  ip = null,
+  feeComponentId = null
 ) => {
   const paymentAmount = Math.round(Number(amount) * 100) / 100;
 
@@ -741,6 +742,16 @@ exports.recordPayment = async (
     throw { statusCode: 400, message: 'Invalid staff ID' };
   }
 
+  if (
+    feeComponentId &&
+    !mongoose.Types.ObjectId.isValid(feeComponentId)
+  ) {
+    throw {
+      statusCode: 400,
+      message: 'Invalid fee component ID'
+    };
+  }
+
   if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
     throw {
       statusCode: 400,
@@ -749,13 +760,19 @@ exports.recordPayment = async (
   }
 
   if (!['cash', 'upi', 'bank', 'cheque'].includes(mode)) {
-    throw { statusCode: 400, message: 'Invalid payment mode' };
+    throw {
+      statusCode: 400,
+      message: 'Invalid payment mode'
+    };
   }
 
   const parsedPaymentDate = new Date(paymentDate);
 
   if (Number.isNaN(parsedPaymentDate.getTime())) {
-    throw { statusCode: 400, message: 'Invalid payment date' };
+    throw {
+      statusCode: 400,
+      message: 'Invalid payment date'
+    };
   }
 
   const session = await mongoose.startSession();
@@ -764,17 +781,22 @@ exports.recordPayment = async (
   try {
     await session.withTransaction(async () => {
 
-      // 1. Verify student exists. (Handles User ID, Student ID, or Fee ID)
+      // 1. Verify and resolve student.
       let student = await Student.findById(studentId).session(session);
-      
+
       if (!student) {
-        student = await Student.findOne({ user_id: studentId }).session(session);
+        student = await Student.findOne({
+          user_id: studentId
+        }).session(session);
       }
 
       if (!student) {
-        const feeRecord = await StudentFee.findById(studentId).session(session);
+        const feeRecord = await StudentFee.findById(studentId)
+          .session(session);
+
         if (feeRecord) {
-          student = await Student.findById(feeRecord.student_id).session(session);
+          student = await Student.findById(feeRecord.student_id)
+            .session(session);
         }
       }
 
@@ -787,22 +809,34 @@ exports.recordPayment = async (
 
       const actualStudentId = student._id;
 
-      // 2. Fetch outstanding fee ledger entries.
-      const pendingFees = await StudentFee.find({
+      // 2. Fetch outstanding fee records.
+      // Specific component = allocate only to that component.
+      // No component = preserve existing FIFO behaviour.
+
+      const feeFilter = {
         student_id: actualStudentId,
         status: { $in: ['pending', 'partial'] }
-      })
+      };
+
+      if (feeComponentId) {
+        feeFilter.fee_component_id = feeComponentId;
+      }
+
+      const pendingFees = await StudentFee.find(feeFilter)
         .sort({ createdAt: 1, _id: 1 })
         .session(session);
 
       if (pendingFees.length === 0) {
         throw {
           statusCode: 400,
-          message: 'No outstanding fee ledger found for this student'
+          message: feeComponentId
+            ? 'No outstanding balance found for the selected fee component'
+            : 'No outstanding fee ledger found for this student'
         };
       }
 
-      // 3. Calculate total outstanding balance.
+      // 3. Calculate outstanding balance.
+
       const totalOutstanding = pendingFees.reduce((total, fee) => {
         return total + Math.round(
           (Number(fee.amount_due) - Number(fee.amount_paid)) * 100
@@ -816,7 +850,8 @@ exports.recordPayment = async (
         };
       }
 
-      // 4. Generate unique receipt number inside transaction.
+      // 4. Generate receipt number.
+
       const year = parsedPaymentDate.getFullYear();
 
       const seq = await Sequence.getNextSequence(
@@ -824,9 +859,11 @@ exports.recordPayment = async (
         session
       );
 
-      const receiptNo = `RCPT-${year}-${String(seq).padStart(5, '0')}`;
+      const receiptNo =
+        `RCPT-${year}-${String(seq).padStart(5, '0')}`;
 
       // 5. Create payment record.
+
       const [payment] = await Payment.create(
         [{
           student_id: actualStudentId,
@@ -840,7 +877,8 @@ exports.recordPayment = async (
         { session }
       );
 
-      // 6. Allocate payment to outstanding fee components.
+      // 6. Allocate payment.
+
       let remainingAmount = Math.round(paymentAmount * 100);
       const allocations = [];
 
@@ -853,7 +891,10 @@ exports.recordPayment = async (
 
         if (outstanding <= 0) continue;
 
-        const amountToApply = Math.min(outstanding, remainingAmount);
+        const amountToApply = Math.min(
+          outstanding,
+          remainingAmount
+        );
 
         fee.amount_paid = Math.round(
           (Number(fee.amount_paid) * 100 + amountToApply)
@@ -876,7 +917,8 @@ exports.recordPayment = async (
         remainingAmount -= amountToApply;
       }
 
-      // 7. Ensure the complete payment was allocated.
+      // 7. Ensure complete allocation.
+
       if (remainingAmount !== 0) {
         throw {
           statusCode: 400,
@@ -885,28 +927,38 @@ exports.recordPayment = async (
       }
 
       // 8. Save allocation records.
-      await PaymentAllocation.insertMany(allocations, { session });
 
-      // 9. Calculate remaining balance after this payment.
+      await PaymentAllocation.insertMany(
+        allocations,
+        { session }
+      );
+
+      // 9. Calculate overall student balance.
+
       const updatedFees = await StudentFee.find({
         student_id: actualStudentId
       }).session(session);
 
-      const balanceAfterPaise = updatedFees.reduce((total, fee) => {
-        const outstanding = Math.round(
-          (Number(fee.amount_due) - Number(fee.amount_paid)) * 100
-        );
+      const balanceAfterPaise = updatedFees.reduce(
+        (total, fee) => {
+          const outstanding = Math.round(
+            (Number(fee.amount_due) - Number(fee.amount_paid)) * 100
+          );
 
-        return total + Math.max(0, outstanding);
-      }, 0);
+          return total + Math.max(0, outstanding);
+        },
+        0
+      );
 
       const balanceAfter = balanceAfterPaise / 100;
 
-      // 10. Store historical balance in payment record.
+      // 10. Update payment balance.
+
       payment.balance_after = balanceAfter;
       await payment.save({ session });
 
-      // 11. Record audit log inside the transaction.
+      // 11. Record audit log.
+
       await auditService.logAction({
         userId: staffId,
         action: 'RECORD_PAYMENT',
@@ -919,6 +971,7 @@ exports.recordPayment = async (
           mode,
           receipt_no: receiptNo,
           balance_after: balanceAfter,
+          fee_component_id: feeComponentId || null,
           allocations
         },
         ip,
@@ -1023,7 +1076,6 @@ exports.generateReceiptPDF = async (paymentId) => {
     margin: 50
   });
 
-  // College heading.
   doc
     .fontSize(20)
     .font('Helvetica-Bold')
@@ -1036,7 +1088,6 @@ exports.generateReceiptPDF = async (paymentId) => {
 
   doc.moveDown(2);
 
-  // Receipt details.
   doc.fontSize(11);
 
   doc.text(`Receipt Number: ${receipt.receipt_no}`);
@@ -1047,7 +1098,6 @@ exports.generateReceiptPDF = async (paymentId) => {
 
   doc.moveDown();
 
-  // Student details.
   doc
     .font('Helvetica-Bold')
     .text('STUDENT DETAILS');
@@ -1061,7 +1111,6 @@ exports.generateReceiptPDF = async (paymentId) => {
 
   doc.moveDown();
 
-  // Payment details.
   doc
     .font('Helvetica-Bold')
     .text('PAYMENT DETAILS');
@@ -1076,7 +1125,6 @@ exports.generateReceiptPDF = async (paymentId) => {
 
   doc.moveDown();
 
-  // Allocations.
   if (receipt.allocations.length > 0) {
     doc
       .font('Helvetica-Bold')
@@ -1093,7 +1141,6 @@ exports.generateReceiptPDF = async (paymentId) => {
     doc.moveDown();
   }
 
-  // Amount received.
   doc
     .font('Helvetica-Bold')
     .fontSize(16)
@@ -1101,7 +1148,6 @@ exports.generateReceiptPDF = async (paymentId) => {
 
   doc.moveDown();
 
-  // Historical balance.
   doc.fontSize(12);
 
   if (receipt.balance_after !== null) {
@@ -1109,7 +1155,9 @@ exports.generateReceiptPDF = async (paymentId) => {
       `Balance After Payment: Rs. ${Number(receipt.balance_after).toFixed(2)}`
     );
   } else {
-    doc.text('Balance After Payment: Not available for this historical payment');
+    doc.text(
+      'Balance After Payment: Not available for this historical payment'
+    );
   }
 
   doc.moveDown(3);
@@ -1122,7 +1170,6 @@ exports.generateReceiptPDF = async (paymentId) => {
       { align: 'center', color: 'grey' }
     );
 
-  // Finalize PDF stream.
   doc.end();
 
   return doc;
@@ -1137,15 +1184,17 @@ exports.getPendingFeesList = async () => {
     .populate('student_id', 'full_name phone student_id')
     .populate('course_id', 'name');
 
-  // Filter out records where the student was deleted or doesn't exist
   return fees.filter(fee => fee.student_id !== null);
 };
 
 // ================= 7. CANCEL PAYMENT =================
 
-
-exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
-  // Validate input before starting the transaction.
+exports.cancelPayment = async (
+  paymentId,
+  reason,
+  adminId,
+  ip = null
+) => {
   if (!mongoose.Types.ObjectId.isValid(paymentId)) {
     throw {
       statusCode: 400,
@@ -1172,8 +1221,11 @@ exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
 
   try {
     await session.withTransaction(async () => {
-      // 1. Fetch payment inside transaction.
-      const payment = await Payment.findById(paymentId).session(session);
+
+      // 1. Fetch payment.
+
+      const payment = await Payment.findById(paymentId)
+        .session(session);
 
       if (!payment) {
         throw {
@@ -1189,7 +1241,8 @@ exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
         };
       }
 
-      // 2. Fetch the exact allocations of this payment.
+      // 2. Fetch exact payment allocations.
+
       const allocations = await PaymentAllocation.find({
         payment_id: payment._id
       }).session(session);
@@ -1201,14 +1254,17 @@ exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
         };
       }
 
-      // 3. Verify allocation total matches payment amount.
+      // 3. Verify allocation total.
+
       const allocatedPaise = allocations.reduce(
         (total, allocation) =>
           total + Math.round(Number(allocation.amount) * 100),
         0
       );
 
-      const paymentPaise = Math.round(Number(payment.amount) * 100);
+      const paymentPaise = Math.round(
+        Number(payment.amount) * 100
+      );
 
       if (allocatedPaise !== paymentPaise) {
         throw {
@@ -1217,7 +1273,8 @@ exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
         };
       }
 
-      // 4. Reverse each original allocation.
+      // 4. Reverse original allocations.
+
       const reversedAllocations = [];
 
       for (const allocation of allocations) {
@@ -1256,11 +1313,9 @@ exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
           };
         }
 
-        // Reverse the exact allocated amount.
         fee.amount_paid =
           (feePaidPaise - allocationPaise) / 100;
 
-        // Recalculate fee status.
         if (fee.amount_paid <= 0) {
           fee.amount_paid = 0;
           fee.status = 'pending';
@@ -1282,7 +1337,7 @@ exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
       }
 
       // 5. Mark payment as cancelled.
-      // Receipt number and payment record remain unchanged.
+
       const oldValues = {
         status: payment.status,
         amount: payment.amount,
@@ -1295,7 +1350,8 @@ exports.cancelPayment = async (paymentId, reason, adminId, ip = null) => {
 
       await payment.save({ session });
 
-      // 6. Record audit inside the same transaction.
+      // 6. Record cancellation audit.
+
       await auditService.logAction({
         userId: adminId,
         action: 'CANCEL_PAYMENT',

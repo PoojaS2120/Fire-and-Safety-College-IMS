@@ -190,33 +190,63 @@ exports.loginUser = async (email, password) => {
   };
 };
 
+const Student = require('../../students/models/Student');
+
 // 1.5 STUDENT LOGIN (Phone Only)
 exports.studentLoginUser = async (phone) => {
-  const syntheticEmail = `${phone}@ims.com`;
-  const user = await User.findOne({ email: syntheticEmail });
+  const student = await Student.findOne({ phone });
 
-  if (!user) throw { statusCode: 401, message: 'No student found with this phone number' };
-  if (!user.is_active) throw { statusCode: 403, message: 'Account is deactivated' };
+  if (!student) {
+    throw {
+      statusCode: 401,
+      message: 'No student found with this phone number'
+    };
+  }
+
+  const user = await User.findById(student.user_id);
+
+  if (!user) {
+    throw {
+      statusCode: 401,
+      message: 'Student account not found'
+    };
+  }
+
+  if (!user.is_active) {
+    throw {
+      statusCode: 403,
+      message: 'Account is deactivated'
+    };
+  }
+
   if (user.role !== 'student') {
-    throw { statusCode: 403, message: 'This phone number belongs to a staff member. Please use the web portal.' };
+    throw {
+      statusCode: 403,
+      message: 'Invalid student account'
+    };
   }
 
   const accessToken = jwt.sign(
-    { id: user._id, role: user.role }, 
-    process.env.JWT_ACCESS_SECRET, 
+    { id: user._id, role: user.role },
+    process.env.JWT_ACCESS_SECRET,
     { expiresIn: process.env.JWT_ACCESS_TTL }
   );
 
   const refreshToken = jwt.sign(
-    { id: user._id, role: user.role }, 
-    process.env.JWT_REFRESH_SECRET, 
+    { id: user._id, role: user.role },
+    process.env.JWT_REFRESH_SECRET,
     { expiresIn: `${process.env.REFRESH_TTL_DAYS}d` }
   );
 
   return {
     accessToken,
     refreshToken,
-    user: { id: user._id, name: user.name, phone: user.phone, role: user.role }
+    user: {
+      id: user._id,
+      name: student.full_name,
+      phone: student.phone,
+      role: user.role
+    }
   };
 };
 

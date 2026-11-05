@@ -1,3 +1,4 @@
+
 const mongoose = require('mongoose');
 const Student = require('../../students/models/Student');
 const feeService = require('../services/feeService');
@@ -18,6 +19,7 @@ exports.generateLedger = async (req, res, next) => {
     }
 
     const result = await feeService.generateFeeLedger(studentId, courseId);
+
     return res.status(201).json({
       success: true,
       message: 'Fee ledger generated',
@@ -30,16 +32,15 @@ exports.generateLedger = async (req, res, next) => {
 
 // ==========================================================
 // 2. FEE SUMMARY
-//    - Staff: /fees/:studentId/summary
-//    - Student: /fees/my/fees  OR  /student/fees/summary
 // ==========================================================
 exports.getSummary = async (req, res, next) => {
   try {
     let studentId = req.params.studentId;
 
-    // Student branch: resolve own studentId from token
     if (req.user.role === 'student') {
-      const student = await Student.findOne({ user_id: req.user.id });
+      const student = await Student.findOne({
+        user_id: req.user.id,
+      });
 
       if (!student) {
         return res.status(404).json({
@@ -48,7 +49,6 @@ exports.getSummary = async (req, res, next) => {
         });
       }
 
-      // If studentId provided in URL, ensure it matches own
       if (studentId && student._id.toString() !== studentId) {
         return res.status(403).json({
           success: false,
@@ -67,7 +67,11 @@ exports.getSummary = async (req, res, next) => {
     }
 
     const result = await feeService.getFeeSummary(studentId);
-    return res.status(200).json({ success: true, data: result });
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
   } catch (err) {
     next(err);
   }
@@ -75,15 +79,15 @@ exports.getSummary = async (req, res, next) => {
 
 // ==========================================================
 // 3. CHECK ELIGIBILITY
-//    - Staff: /fees/:studentId/eligibility
-//    - Student: same URL (own enforced)
 // ==========================================================
 exports.checkEligibility = async (req, res, next) => {
   try {
     let studentId = req.params.studentId;
 
     if (req.user.role === 'student') {
-      const student = await Student.findOne({ user_id: req.user.id });
+      const student = await Student.findOne({
+        user_id: req.user.id,
+      });
 
       if (!student) {
         return res.status(404).json({
@@ -111,7 +115,11 @@ exports.checkEligibility = async (req, res, next) => {
     }
 
     const result = await feeService.checkExamEligibility(studentId);
-    return res.status(200).json({ success: true, data: result });
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
   } catch (err) {
     next(err);
   }
@@ -122,7 +130,14 @@ exports.checkEligibility = async (req, res, next) => {
 // ==========================================================
 exports.recordPayment = async (req, res, next) => {
   try {
-    const { studentId, amount, mode, reference_no, payment_date } = req.body;
+    const {
+      studentId,
+      amount,
+      mode,
+      reference_no,
+      payment_date,
+      fee_component_id,
+    } = req.body;
 
     if (!studentId || amount === undefined || !mode) {
       return res.status(400).json({
@@ -138,6 +153,23 @@ exports.recordPayment = async (req, res, next) => {
       });
     }
 
+    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid student ID',
+      });
+    }
+
+    if (
+      fee_component_id &&
+      !mongoose.Types.ObjectId.isValid(fee_component_id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid fee component ID',
+      });
+    }
+
     const payment = await feeService.recordPayment(
       studentId,
       amount,
@@ -145,7 +177,8 @@ exports.recordPayment = async (req, res, next) => {
       reference_no,
       req.user.id,
       payment_date || new Date(),
-      req.ip
+      req.ip,
+      fee_component_id || null
     );
 
     return res.status(201).json({
@@ -160,16 +193,17 @@ exports.recordPayment = async (req, res, next) => {
 
 // ==========================================================
 // 5. GET RECEIPT (JSON)
-//    - Staff: any receipt
-//    - Student: own only
 // ==========================================================
 exports.getReceipt = async (req, res, next) => {
   try {
-    const receipt = await feeService.getReceiptData(req.params.paymentId);
+    const receipt = await feeService.getReceiptData(
+      req.params.paymentId
+    );
 
-    // Students can only access their own receipts
     if (req.user.role === 'student') {
-      const student = await Student.findOne({ user_id: req.user.id });
+      const student = await Student.findOne({
+        user_id: req.user.id,
+      });
 
       if (!student) {
         return res.status(404).json({
@@ -186,7 +220,10 @@ exports.getReceipt = async (req, res, next) => {
       }
     }
 
-    return res.status(200).json({ success: true, data: receipt });
+    return res.status(200).json({
+      success: true,
+      data: receipt,
+    });
   } catch (err) {
     next(err);
   }
@@ -194,14 +231,13 @@ exports.getReceipt = async (req, res, next) => {
 
 // ==========================================================
 // 6. DOWNLOAD RECEIPT PDF
-//    - Staff: any receipt
-//    - Student: own only
 // ==========================================================
 exports.downloadReceipt = async (req, res, next) => {
   try {
-    // Students can only download their own receipts
     if (req.user.role === 'student') {
-      const student = await Student.findOne({ user_id: req.user.id });
+      const student = await Student.findOne({
+        user_id: req.user.id,
+      });
 
       if (!student) {
         return res.status(404).json({
@@ -232,6 +268,7 @@ exports.downloadReceipt = async (req, res, next) => {
     );
 
     res.setHeader('Content-Type', 'application/pdf');
+
     res.setHeader(
       'Content-Disposition',
       `attachment; filename=receipt_${req.params.paymentId}.pdf`
@@ -250,7 +287,11 @@ exports.downloadReceipt = async (req, res, next) => {
 exports.getPendingFees = async (req, res, next) => {
   try {
     const pending = await feeService.getPendingFeesList();
-    return res.status(200).json({ success: true, data: pending });
+
+    return res.status(200).json({
+      success: true,
+      data: pending,
+    });
   } catch (err) {
     next(err);
   }
@@ -289,11 +330,12 @@ exports.cancelPayment = async (req, res, next) => {
 
 // ==========================================================
 // 9. STUDENT APP: GET OWN FEES
-//    Endpoint: GET /student/fees  OR  GET /student/fees/summary
 // ==========================================================
 exports.getMyFees = async (req, res, next) => {
   try {
-    const student = await Student.findOne({ user_id: req.user.id });
+    const student = await Student.findOne({
+      user_id: req.user.id,
+    });
 
     if (!student) {
       return res.status(404).json({
@@ -303,7 +345,11 @@ exports.getMyFees = async (req, res, next) => {
     }
 
     const summary = await feeService.getFeeSummary(student._id);
-    return res.status(200).json({ success: true, data: summary });
+
+    return res.status(200).json({
+      success: true,
+      data: summary,
+    });
   } catch (err) {
     next(err);
   }
@@ -311,11 +357,12 @@ exports.getMyFees = async (req, res, next) => {
 
 // ==========================================================
 // 10. STUDENT APP: GET OWN PAYMENTS
-//     Endpoint: GET /student/payments
 // ==========================================================
 exports.getMyPayments = async (req, res, next) => {
   try {
-    const student = await Student.findOne({ user_id: req.user.id });
+    const student = await Student.findOne({
+      user_id: req.user.id,
+    });
 
     if (!student) {
       return res.status(404).json({
@@ -324,11 +371,16 @@ exports.getMyPayments = async (req, res, next) => {
       });
     }
 
-    const payments = await Payment.find({ student_id: student._id }).sort({
+    const payments = await Payment.find({
+      student_id: student._id,
+    }).sort({
       createdAt: -1,
     });
 
-    return res.status(200).json({ success: true, data: payments });
+    return res.status(200).json({
+      success: true,
+      data: payments,
+    });
   } catch (err) {
     next(err);
   }

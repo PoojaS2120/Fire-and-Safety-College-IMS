@@ -314,7 +314,7 @@ async function validateAssignments(courseId, batchId) {
 
 async function generateStudentId() {
   const year = new Date().getFullYear();
-  const key = `student_id_${year}`;
+  const key = `FSC-${year}`;
   const counter = await StudentIdCounter.findByIdAndUpdate(
     key,
     { $inc: { sequence: 1 } },
