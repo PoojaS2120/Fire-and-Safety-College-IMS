@@ -275,6 +275,18 @@ exports.generateTcLcPDF = async (requestId) => {
   const student = request.student_id;
   const doc = new PDFDocument({ margin: 50 });
 
+  // Format full name in Title Case (e.g., Pooja S Gavit)
+  const formattedName = student.full_name.replace(/\w\S*/g, (txt) => 
+    txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
+  );
+
+  // 1. Conditional Guardian Text
+  // If guardian_name exists, add "son/daughter of [Name]." Otherwise, leave it out.
+  let guardianText = '';
+  if (student.guardian_name && student.guardian_name.trim() !== '') {
+    guardianText = `, son/daughter of ${student.guardian_name},`;
+  }
+
   // Header
   doc.fontSize(22).text('Fire & Safety College', { align: 'center' });
   doc.fontSize(16).text(
@@ -287,7 +299,7 @@ exports.generateTcLcPDF = async (requestId) => {
 
   // Body
   doc.fontSize(12).text(
-    `This is to certify that Mr./Ms. ${student.full_name}, bearing Student ID ${student.student_id}, son/daughter of ${student.guardian_name || 'N/A'}, was a bonafide student of this institute.`,
+    `This is to certify that Mr./Ms. ${formattedName}, bearing Student ID ${student.student_id}${guardianText} was a bonafide student of this institute.`,
     { align: 'justify' }
   );
   doc.moveDown();
@@ -300,11 +312,14 @@ exports.generateTcLcPDF = async (requestId) => {
   );
   doc.moveDown();
   doc.text(`Reason for leaving: ${request.reason}`);
-  doc.moveDown(2);
+  doc.moveDown(3);
 
-  // Footer
-  doc.text(`Date of Issue: ${new Date(request.issue_date).toLocaleDateString()}`, { align: 'left' });
+  // Footer (Static Wording for Date)
+  doc.text('Date of Issue: ___________________', { align: 'left' });
   doc.text('Principal / Authorized Signatory', 400, 650, { align: 'right' });
+
+  // End the document
+  doc.end(); 
 
   return doc;
 };

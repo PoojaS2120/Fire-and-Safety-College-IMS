@@ -168,7 +168,6 @@ const validateReferences = async (data, facultyId) => {
 // =====================================================
 // STUDENT AND MARK VALIDATION
 // =====================================================
-
 const validateStudents = async (exam, studentIds) => {
   const uniqueIds = [...new Set(studentIds.map(String))];
 
@@ -182,18 +181,14 @@ const validateStudents = async (exam, studentIds) => {
     }
   }
 
+  // Relaxed check: Only ensure the students exist. 
+  // We removed the strict course_id, batch_id, and active status checks.
   const students = await Student.find({
     _id: { $in: uniqueIds },
-    course_id: exam.course_id,
-    batch_id: exam.batch_id,
-    status: 'active',
   }).select('_id student_id full_name');
 
   if (students.length !== uniqueIds.length) {
-    fail(
-      400,
-      'One or more students are inactive or do not belong to this exam batch'
-    );
+    fail(400, 'One or more students in the request do not exist in the database.');
   }
 
   return students;
