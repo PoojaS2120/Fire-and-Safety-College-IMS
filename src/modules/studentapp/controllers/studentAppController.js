@@ -1,5 +1,6 @@
 
 const studentAppService = require('../services/studentAppService');
+const libraryService = require('../../library/services/libraryService');
 
 exports.getProfile = async (req, res, next) => {
   try {
@@ -217,6 +218,28 @@ exports.getLibraryBook = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: 'Book details fetched successfully.',
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
+// STUDENT APK - LIBRARY ISSUE HISTORY
+// ==========================================
+
+// GET /student/library/issues
+exports.getStudentLibraryIssues = async (req, res, next) => {
+  try {
+    const data = await libraryService.getStudentHistoryForUser(
+      req.user.id
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Student library issue history fetched successfully.',
+      count: data.length,
       data
     });
   } catch (error) {

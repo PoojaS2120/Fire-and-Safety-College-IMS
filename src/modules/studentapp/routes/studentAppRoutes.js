@@ -122,6 +122,12 @@ router.get(
   studentAppController.getLibraryBook
 );
 
+// Student's own issued book history
+router.get(
+  '/library/issues',
+  studentAppController.getStudentLibraryIssues
+);
+
 // ==========================================
 // STUDENT APK - NOTICES
 // ==========================================
