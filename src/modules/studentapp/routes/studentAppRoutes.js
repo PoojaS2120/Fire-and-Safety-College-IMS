@@ -41,8 +41,13 @@ router.get(
 
 // Download PDF material
 router.get(
+  '/materials/:id/view',
+  materialController.viewDocument
+);
+
+router.get(
   '/materials/:id/download',
-  materialController.downloadPdf
+  materialController.downloadDocument
 );
 
 // Stream video material

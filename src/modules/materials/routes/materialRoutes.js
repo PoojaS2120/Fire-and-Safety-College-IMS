@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router();
 
@@ -9,7 +10,6 @@ const materialController = require('../controllers/materialController');
 const {
   validateCreateMaterial,
   validateUpdateMaterial,
-  validateMaterialStatus,
 } = require('../validations/materialValidation');
 
 // All material routes require authentication.
@@ -22,7 +22,7 @@ router.get(
   materialController.getWatermarkIdentity
 );
 
-// Create study material (PDF or video).
+// Create study material.
 router.post(
   '/',
   authorize('super_admin', 'faculty'),
@@ -37,18 +37,25 @@ router.get(
   materialController.getMaterials
 );
 
+// View PDF study material.
+router.get(
+  '/:id/view',
+  authorize('super_admin', 'office_staff', 'faculty', 'student'),
+  materialController.viewDocument
+);
+
+// Download original document (PDF, PPT, PPTX, DOC, DOCX).
+router.get(
+  '/:id/download',
+  authorize('super_admin', 'office_staff', 'faculty', 'student'),
+  materialController.downloadDocument
+);
+
 // Stream video with HTTP Range support.
 router.get(
   '/:id/stream',
   authorize('super_admin', 'office_staff', 'faculty', 'student'),
   materialController.streamVideo
-);
-
-// View PDF study material.
-router.get(
-  '/:id/download',
-  authorize('super_admin', 'office_staff', 'faculty', 'student'),
-  materialController.downloadPdf
 );
 
 // Get material details by ID.
@@ -66,12 +73,12 @@ router.put(
   materialController.updateMaterial
 );
 
-// Archive or reactivate material.
-router.patch(
-  '/:id/status',
+
+// Permanently delete study material.
+router.delete(
+  '/:id',
   authorize('super_admin', 'faculty'),
-  validateMaterialStatus,
-  materialController.updateMaterialStatus
+  materialController.deleteMaterial
 );
 
 module.exports = router;
