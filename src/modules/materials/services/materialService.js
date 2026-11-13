@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const path = require('path');
 const fs = require('fs');
-
+const { pathToFileURL } = require('url');
 const os = require('os');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
@@ -590,6 +590,124 @@ exports.createStudentWatermarkedFile = async (
       filePath: outputPath,
 
       cleanup: async () => {
+        await fs.promises.rm(tempDir, {
+          recursive: true,
+          force: true,
+        });
+      },
+    };
+  } catch (error) {
+    await fs.promises.rm(tempDir, {
+      recursive: true,
+      force: true,
+    });
+
+    throw error;
+  }
+};
+
+// --------------------------------------------------
+// GENERATE INLINE DOCUMENT PREVIEW
+// PDF: use existing watermark logic.
+// OFFICE: convert to PDF, then watermark for students.
+// --------------------------------------------------
+
+exports.createDocumentPreviewFile = async (upload, filePath, user) => {
+  // Existing PDF preview and watermark handling.
+  if (upload.mimeType === 'application/pdf') {
+    return exports.createStudentWatermarkedFile(
+      upload,
+      filePath,
+      user
+    );
+  }
+
+  const extension = path.extname(upload.originalName).toLowerCase();
+
+  const supportedOfficeExtensions = [
+    '.ppt',
+    '.pptx',
+    '.doc',
+    '.docx',
+  ];
+
+  if (!supportedOfficeExtensions.includes(extension)) {
+    throw createError('Unsupported document preview format.', 415);
+  }
+
+  const sofficePath =
+    process.env.SOFFICE_PATH ||
+    'soffice';
+
+  const tempDir = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), 'ims-office-preview-')
+  );
+
+  const profileDir = path.join(tempDir, 'lo-profile');
+
+  const convertedPath = path.join(
+    tempDir,
+    `${path.parse(filePath).name}.pdf`
+  );
+
+  try {
+    await fs.promises.mkdir(profileDir, { recursive: true });
+
+    await execFileAsync(
+      sofficePath,
+      [
+        `-env:UserInstallation=${pathToFileURL(profileDir).href}`,
+        '--headless',
+        '--convert-to',
+        'pdf',
+        '--outdir',
+        tempDir,
+        filePath,
+      ],
+      {
+        windowsHide: true,
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 120000,
+      }
+    );
+
+    if (!fs.existsSync(convertedPath)) {
+      throw createError(
+        'Office document could not be converted to PDF.',
+        500
+      );
+    }
+
+    // Faculty/admin receive the converted PDF without watermark.
+    if (user.role !== 'student') {
+      return {
+        filePath: convertedPath,
+        cleanup: async () => {
+          await fs.promises.rm(tempDir, {
+            recursive: true,
+            force: true,
+          });
+        },
+      };
+    }
+
+    // Students receive the converted PDF with their watermark.
+    const pdfUpload = {
+      ...upload,
+      originalName: `${path.parse(upload.originalName).name}.pdf`,
+    };
+
+    const watermarked = await exports.createStudentWatermarkedFile(
+      pdfUpload,
+      convertedPath,
+      user
+    );
+
+    return {
+      filePath: watermarked.filePath,
+      cleanup: async () => {
+        await watermarked.cleanup().catch(() => {});
+
         await fs.promises.rm(tempDir, {
           recursive: true,
           force: true,

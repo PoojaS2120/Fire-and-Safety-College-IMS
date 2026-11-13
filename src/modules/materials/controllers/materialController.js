@@ -138,6 +138,7 @@ exports.getWatermarkIdentity = async (req, res, next) => {
 // VIEW DOCUMENT
 // --------------------------------------------------
 
+
 exports.viewDocument = async (req, res, next) => {
   let generated;
   let documentStream;
@@ -149,15 +150,9 @@ exports.viewDocument = async (req, res, next) => {
         req.user
       );
 
-    // Browser inline preview is supported for PDF.
-    if (upload.mimeType !== 'application/pdf') {
-      return res.status(415).json({
-        success: false,
-        message: 'Inline preview is supported for PDF only.',
-      });
-    }
-
-    generated = await materialService.createStudentWatermarkedFile(
+    // PDF files are previewed directly.
+    // Office files are converted to PDF by the service.
+    generated = await materialService.createDocumentPreviewFile(
       upload,
       filePath,
       req.user
@@ -165,20 +160,29 @@ exports.viewDocument = async (req, res, next) => {
 
     const stat = fs.statSync(generated.filePath);
 
+    const isOfficeDocument =
+      upload.mimeType !== 'application/pdf';
+
+    const previewName = isOfficeDocument
+      ? `${require('path').parse(upload.originalName).name}.pdf`
+      : upload.originalName;
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', stat.size);
     res.setHeader(
       'Content-Disposition',
-      `inline; filename*=UTF-8''${encodeURIComponent(upload.originalName)}`
+      `inline; filename*=UTF-8''${encodeURIComponent(previewName)}`
     );
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
 
     documentStream = fs.createReadStream(generated.filePath);
 
-    const cleanup = () => generated?.cleanup().catch(() => {});
+    const cleanup = () =>
+      generated?.cleanup().catch(() => {});
 
     documentStream.on('close', cleanup);
+
     documentStream.on('error', (error) => {
       cleanup();
 
@@ -189,7 +193,11 @@ exports.viewDocument = async (req, res, next) => {
       }
     });
 
-    res.on('close', () => documentStream.destroy());
+    res.on('close', () => {
+      if (documentStream && !documentStream.destroyed) {
+        documentStream.destroy();
+      }
+    });
 
     documentStream.pipe(res);
   } catch (error) {
@@ -200,6 +208,7 @@ exports.viewDocument = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 // --------------------------------------------------
