@@ -148,7 +148,6 @@ const validateReferences = async (data, facultyId) => {
     fail(400, 'Passing marks cannot exceed maximum marks');
   }
 };
-
 const validateStudents = async (test, studentIds) => {
   const uniqueIds = [...new Set(studentIds.map(String))];
 
@@ -162,18 +161,13 @@ const validateStudents = async (test, studentIds) => {
     }
   }
 
+  // 🚨 RELAXED CHECK: Only verify they exist.
   const students = await Student.find({
-    _id: { $in: uniqueIds },
-    course_id: test.course_id,
-    batch_id: test.batch_id,
-    status: 'active'
+    _id: { $in: uniqueIds }
   }).select('_id student_id full_name');
 
   if (students.length !== uniqueIds.length) {
-    fail(
-      400,
-      'One or more students are inactive or do not belong to this test batch'
-    );
+    fail(400, 'One or more students in the request do not exist.');
   }
 
   return students;
