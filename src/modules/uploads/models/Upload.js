@@ -24,18 +24,28 @@ const uploadSchema = new mongoose.Schema(
         'image/jpeg',
         'image/png',
         'image/webp',
+
+        // PowerPoint
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+
+        // Word
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+
+        // Videos
         'video/mp4',
         'video/quicktime',
         'video/webm',
       ],
     },
 
-   size: {
-  type: Number,
-  required: true,
-  min: 1,
-  max: 5 * 1024 * 1024 * 1024, // 5 GB
-},
+    size: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 5 * 1024 * 1024 * 1024,
+    },
 
     uploadedBy: {
       type: mongoose.Schema.Types.ObjectId,

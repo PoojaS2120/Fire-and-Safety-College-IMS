@@ -89,23 +89,30 @@ exports.updateMaterial = async (req, res, next) => {
 // UPDATE MATERIAL STATUS
 // --------------------------------------------------
 
-exports.updateMaterialStatus = async (req, res, next) => {
+// --------------------------------------------------
+// DELETE MATERIAL
+// --------------------------------------------------
+
+exports.deleteMaterial = async (req, res, next) => {
   try {
-    const material = await materialService.updateMaterialStatus(
+    const material = await materialService.deleteMaterial(
       req.params.id,
-      req.body.status,
       req.user
     );
 
     res.status(200).json({
       success: true,
-      message: 'Material status updated successfully.',
-      data: material,
+      message: 'Study material deleted successfully.',
+      data: {
+        _id: material._id,
+        title: material.title
+      }
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 // --------------------------------------------------
 // GET STUDENT WATERMARK IDENTITY
@@ -127,31 +134,54 @@ exports.getWatermarkIdentity = async (req, res, next) => {
 // --------------------------------------------------
 // DOWNLOAD / VIEW PDF MATERIAL
 // --------------------------------------------------
+// --------------------------------------------------
+// VIEW DOCUMENT
+// --------------------------------------------------
 
-exports.downloadPdf = async (req, res, next) => {
+exports.viewDocument = async (req, res, next) => {
+  let generated;
+  let documentStream;
+
   try {
     const { upload, filePath } =
-      await materialService.getPdfForDownload(
+      await materialService.getDocumentForDownload(
         req.params.id,
         req.user
       );
 
-    const stat = fs.statSync(filePath);
+    // Browser inline preview is supported for PDF.
+    if (upload.mimeType !== 'application/pdf') {
+      return res.status(415).json({
+        success: false,
+        message: 'Inline preview is supported for PDF only.',
+      });
+    }
+
+    generated = await materialService.createStudentWatermarkedFile(
+      upload,
+      filePath,
+      req.user
+    );
+
+    const stat = fs.statSync(generated.filePath);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', stat.size);
-
     res.setHeader(
       'Content-Disposition',
       `inline; filename*=UTF-8''${encodeURIComponent(upload.originalName)}`
     );
-
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
 
-    const pdfStream = fs.createReadStream(filePath);
+    documentStream = fs.createReadStream(generated.filePath);
 
-    pdfStream.on('error', (error) => {
+    const cleanup = () => generated?.cleanup().catch(() => {});
+
+    documentStream.on('close', cleanup);
+    documentStream.on('error', (error) => {
+      cleanup();
+
       if (!res.headersSent) {
         next(error);
       } else {
@@ -159,17 +189,89 @@ exports.downloadPdf = async (req, res, next) => {
       }
     });
 
-    pdfStream.pipe(res);
+    res.on('close', () => documentStream.destroy());
+
+    documentStream.pipe(res);
   } catch (error) {
+    if (generated) {
+      await generated.cleanup().catch(() => {});
+    }
+
     next(error);
   }
 };
+
+
+// --------------------------------------------------
+// DOWNLOAD DOCUMENT
+// --------------------------------------------------
+
+exports.downloadDocument = async (req, res, next) => {
+  let generated;
+  let documentStream;
+
+  try {
+    const { upload, filePath } =
+      await materialService.getDocumentForDownload(
+        req.params.id,
+        req.user
+      );
+
+    generated = await materialService.createStudentWatermarkedFile(
+      upload,
+      filePath,
+      req.user
+    );
+
+    const stat = fs.statSync(generated.filePath);
+
+    res.setHeader('Content-Type', upload.mimeType);
+    res.setHeader('Content-Length', stat.size);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(upload.originalName)}`
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+
+    documentStream = fs.createReadStream(generated.filePath);
+
+    const cleanup = () => generated?.cleanup().catch(() => {});
+
+    documentStream.on('close', cleanup);
+    documentStream.on('error', (error) => {
+      cleanup();
+
+      if (!res.headersSent) {
+        next(error);
+      } else {
+        res.destroy(error);
+      }
+    });
+
+    res.on('close', () => documentStream.destroy());
+
+    documentStream.pipe(res);
+  } catch (error) {
+    if (generated) {
+      await generated.cleanup().catch(() => {});
+    }
+
+    next(error);
+  }
+};
+
 
 // --------------------------------------------------
 // STREAM VIDEO WITH HTTP RANGE SUPPORT
 // --------------------------------------------------
 
+// --------------------------------------------------
+// STREAM WATERMARKED VIDEO WITH HTTP RANGE SUPPORT
+// --------------------------------------------------
+
 exports.streamVideo = async (req, res, next) => {
+  let generated;
   let videoStream;
 
   try {
@@ -179,22 +281,34 @@ exports.streamVideo = async (req, res, next) => {
         req.user
       );
 
-    const stat = fs.statSync(filePath);
+    generated = await materialService.createStudentWatermarkedFile(
+      upload,
+      filePath,
+      req.user
+    );
+
+    const stat = fs.statSync(generated.filePath);
     const fileSize = stat.size;
     const range = req.headers.range;
+
+    const cleanup = () => generated?.cleanup().catch(() => {});
 
     res.setHeader('Content-Type', upload.mimeType);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
 
-    // Full video response when Range header is not provided.
+    // Full video response
     if (!range) {
       res.setHeader('Content-Length', fileSize);
 
-      videoStream = fs.createReadStream(filePath);
+      videoStream = fs.createReadStream(generated.filePath);
+
+      videoStream.on('close', cleanup);
 
       videoStream.on('error', (error) => {
+        cleanup();
+
         if (!res.headersSent) {
           next(error);
         } else {
@@ -202,10 +316,12 @@ exports.streamVideo = async (req, res, next) => {
         }
       });
 
+      res.on('close', () => videoStream.destroy());
+
       return videoStream.pipe(res);
     }
 
-    // Parse Range header.
+    // Parse Range header
     const parts = range.replace(/bytes=/, '').split('-');
 
     if (
@@ -215,13 +331,14 @@ exports.streamVideo = async (req, res, next) => {
       (!parts[0] && !parts[1])
     ) {
       res.setHeader('Content-Range', `bytes */${fileSize}`);
+      await cleanup();
       return res.status(416).end();
     }
 
     let start;
     let end;
 
-    // Handle suffix range, e.g. bytes=-500.
+    // Suffix range
     if (!parts[0]) {
       const suffixLength = Number(parts[1]);
 
@@ -230,6 +347,7 @@ exports.streamVideo = async (req, res, next) => {
         suffixLength <= 0
       ) {
         res.setHeader('Content-Range', `bytes */${fileSize}`);
+        await cleanup();
         return res.status(416).end();
       }
 
@@ -240,7 +358,6 @@ exports.streamVideo = async (req, res, next) => {
       end = parts[1] ? Number(parts[1]) : fileSize - 1;
     }
 
-    // Validate requested byte range.
     if (
       !Number.isSafeInteger(start) ||
       !Number.isSafeInteger(end) ||
@@ -249,6 +366,7 @@ exports.streamVideo = async (req, res, next) => {
       end < start
     ) {
       res.setHeader('Content-Range', `bytes */${fileSize}`);
+      await cleanup();
       return res.status(416).end();
     }
 
@@ -256,7 +374,6 @@ exports.streamVideo = async (req, res, next) => {
 
     const chunkSize = end - start + 1;
 
-    // Partial content response.
     res.writeHead(206, {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Content-Length': chunkSize,
@@ -266,12 +383,16 @@ exports.streamVideo = async (req, res, next) => {
       'Cache-Control': 'private, no-store',
     });
 
-    videoStream = fs.createReadStream(filePath, {
+    videoStream = fs.createReadStream(generated.filePath, {
       start,
       end,
     });
 
+    videoStream.on('close', cleanup);
+
     videoStream.on('error', (error) => {
+      cleanup();
+
       if (!res.headersSent) {
         next(error);
       } else {
@@ -279,8 +400,14 @@ exports.streamVideo = async (req, res, next) => {
       }
     });
 
+    res.on('close', () => videoStream.destroy());
+
     videoStream.pipe(res);
   } catch (error) {
+    if (generated) {
+      await generated.cleanup().catch(() => {});
+    }
+
     next(error);
   }
 };

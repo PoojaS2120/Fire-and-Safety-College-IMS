@@ -76,7 +76,7 @@ router.get(
   materialController.getWatermarkIdentity
 );
 router.get('/materials/:id', materialController.getMaterialById);
-router.get('/materials/:id/download', materialController.downloadPdf);
+router.get('/materials/:id/download', materialController.downloadDocument);
 router.get('/materials/:id/stream', materialController.streamVideo);
 
 // ==========================================================

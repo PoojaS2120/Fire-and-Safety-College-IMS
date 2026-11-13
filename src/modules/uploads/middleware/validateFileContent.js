@@ -1,35 +1,90 @@
 
 const fs = require('fs/promises');
+const path = require('path');
+const JSZip = require('jszip');
+
+const OLE_SIGNATURE = Buffer.from([
+  0xd0, 0xcf, 0x11, 0xe0,
+  0xa1, 0xb1, 0x1a, 0xe1,
+]);
 
 const signatures = {
-  '.pdf': {
-    mimeType: 'application/pdf',
-  },
-  '.jpg': {
-    mimeType: 'image/jpeg',
-  },
-  '.jpeg': {
-    mimeType: 'image/jpeg',
-  },
-  '.png': {
-    mimeType: 'image/png',
-  },
-  '.webp': {
-    mimeType: 'image/webp',
-  },
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx':
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.doc': 'application/msword',
+  '.docx':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
-async function validateFileContent(file) {
-  if (!file) return false;
+async function validateOfficeDocument(file, extension) {
+  const buffer = await fs.readFile(file.path);
 
-  const extension = require('path')
-    .extname(file.originalname)
-    .toLowerCase();
+  // Legacy PowerPoint and Word documents use OLE Compound File format.
+  if (extension === '.ppt' || extension === '.doc') {
+    return (
+      buffer.length >= 8 &&
+      buffer.subarray(0, 8).equals(OLE_SIGNATURE)
+    );
+  }
 
-  const expected = signatures[extension];
+  // PPTX and DOCX are ZIP-based Office Open XML packages.
+  let zip;
 
-  if (!expected || file.mimetype !== expected.mimeType) {
+  try {
+    zip = await JSZip.loadAsync(buffer, {
+      checkCRC32: true,
+    });
+  } catch {
     return false;
+  }
+
+  const contentTypesFile = zip.file('[Content_Types].xml');
+
+  if (!contentTypesFile) return false;
+
+  const contentTypes = await contentTypesFile.async('string');
+
+  if (extension === '.pptx') {
+    const presentationFile = zip.file('ppt/presentation.xml');
+
+    if (!presentationFile) return false;
+
+    return contentTypes.includes(
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml'
+    );
+  }
+
+  if (extension === '.docx') {
+    const documentFile = zip.file('word/document.xml');
+
+    if (!documentFile) return false;
+
+    return contentTypes.includes(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'
+    );
+  }
+
+  return false;
+}
+
+async function validateFileContent(file) {
+  if (!file?.path || !file.originalname) return false;
+
+  const extension = path.extname(file.originalname).toLowerCase();
+  const expectedMimeType = signatures[extension];
+
+  if (!expectedMimeType || file.mimetype !== expectedMimeType) {
+    return false;
+  }
+
+  if (['.ppt', '.pptx', '.doc', '.docx'].includes(extension)) {
+    return validateOfficeDocument(file, extension);
   }
 
   let handle;
@@ -58,7 +113,10 @@ async function validateFileContent(file) {
         return (
           header.length >= 8 &&
           header.subarray(0, 8).equals(
-            Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+            Buffer.from([
+              0x89, 0x50, 0x4e, 0x47,
+              0x0d, 0x0a, 0x1a, 0x0a,
+            ])
           )
         );
 
@@ -72,6 +130,8 @@ async function validateFileContent(file) {
       default:
         return false;
     }
+  } catch {
+    return false;
   } finally {
     if (handle) await handle.close();
   }
