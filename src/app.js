@@ -118,6 +118,9 @@ app.use('/api/v1/dashboard', require('./modules/dashboard/routes/dashboardRoutes
 
 app.use('/api/v1/reports', require('./modules/reports/routes/reportRoutes'));
 
+// permission
+app.use('/api/v1/rbac', require('./modules/rbac/routes/rbacRoutes'));
+
 // ============================================================
 // STUDENT APP ROUTES
 // Register specific routes before generic student routes.
