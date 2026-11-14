@@ -1,4 +1,5 @@
 // const User = require('../models/User');
+// const Student = require('../../students/models/Student');
 // const jwt = require('jsonwebtoken');
 // const crypto = require('crypto');
 
@@ -7,13 +8,12 @@
 
 // // 1. LOGIN (Staff & Admin)
 // exports.loginUser = async (email, password) => {
-//   const user = await User.findOne({ email });
+//   // 🚨 MUST POPULATE ROLE
+//   const user = await User.findOne({ email }).populate('role');
   
-//   // Generic message to prevent user enumeration
 //   if (!user) throw { statusCode: 401, message: 'Invalid credentials' };
 //   if (!user.is_active) throw { statusCode: 403, message: 'Account is deactivated' };
 
-//   // Check if account is locked
 //   if (user.lock_until && user.lock_until > Date.now()) {
 //     const minsLeft = Math.ceil((user.lock_until - Date.now()) / 60000);
 //     throw { statusCode: 423, message: `Account locked. Try again in ${minsLeft} minutes.` };
@@ -22,29 +22,28 @@
 //   const isMatch = await user.matchPassword(password);
   
 //   if (!isMatch) {
-//     // Increment failed attempts
 //     user.failed_login_count += 1;
 //     if (user.failed_login_count >= MAX_FAILED_ATTEMPTS) {
 //       user.lock_until = Date.now() + LOCK_TIME_MS;
-//       user.failed_login_count = 0; // reset counter after locking
+//       user.failed_login_count = 0; 
 //     }
 //     await user.save();
 //     throw { statusCode: 401, message: 'Invalid credentials' };
 //   }
 
-//   // Success: reset failed attempts
 //   user.failed_login_count = 0;
 //   user.lock_until = null;
 //   await user.save();
 
+//   // 🚨 USE user.role.name
 //   const accessToken = jwt.sign(
-//     { id: user._id, role: user.role }, 
+//     { id: user._id, role: user.role.name }, 
 //     process.env.JWT_ACCESS_SECRET, 
 //     { expiresIn: process.env.JWT_ACCESS_TTL }
 //   );
 
 //   const refreshToken = jwt.sign(
-//     { id: user._id, role: user.role }, 
+//     { id: user._id, role: user.role.name }, 
 //     process.env.JWT_REFRESH_SECRET, 
 //     { expiresIn: `${process.env.REFRESH_TTL_DAYS}d` }
 //   );
@@ -52,54 +51,43 @@
 //   return {
 //     accessToken,
 //     refreshToken,
-//     user: { id: user._id, name: user.name, email: user.email, role: user.role }
+//     // 🚨 RETURN user.role.name
+//     user: { id: user._id, name: user.name, email: user.email, role: user.role.name }
 //   };
 // };
-
-// const Student = require('../../students/models/Student');
 
 // // 1.5 STUDENT LOGIN (Phone Only)
 // exports.studentLoginUser = async (phone) => {
 //   const student = await Student.findOne({ phone });
 
 //   if (!student) {
-//     throw {
-//       statusCode: 401,
-//       message: 'No student found with this phone number'
-//     };
+//     throw { statusCode: 401, message: 'No student found with this phone number' };
 //   }
 
-//   const user = await User.findById(student.user_id);
+//   // 🚨 MUST POPULATE ROLE HERE TOO
+//   const user = await User.findById(student.user_id).populate('role');
 
 //   if (!user) {
-//     throw {
-//       statusCode: 401,
-//       message: 'Student account not found'
-//     };
+//     throw { statusCode: 401, message: 'Student account not found' };
 //   }
 
 //   if (!user.is_active) {
-//     throw {
-//       statusCode: 403,
-//       message: 'Account is deactivated'
-//     };
+//     throw { statusCode: 403, message: 'Account is deactivated' };
 //   }
 
-//   if (user.role !== 'student') {
-//     throw {
-//       statusCode: 403,
-//       message: 'Invalid student account'
-//     };
+//   // 🚨 CHECK user.role.name
+//   if (user.role.name !== 'student') {
+//     throw { statusCode: 403, message: 'Invalid student account' };
 //   }
 
 //   const accessToken = jwt.sign(
-//     { id: user._id, role: user.role },
+//     { id: user._id, role: user.role.name },
 //     process.env.JWT_ACCESS_SECRET,
 //     { expiresIn: process.env.JWT_ACCESS_TTL }
 //   );
 
 //   const refreshToken = jwt.sign(
-//     { id: user._id, role: user.role },
+//     { id: user._id, role: user.role.name },
 //     process.env.JWT_REFRESH_SECRET,
 //     { expiresIn: `${process.env.REFRESH_TTL_DAYS}d` }
 //   );
@@ -111,7 +99,7 @@
 //       id: user._id,
 //       name: student.full_name,
 //       phone: student.phone,
-//       role: user.role
+//       role: user.role.name
 //     }
 //   };
 // };
@@ -149,14 +137,13 @@
 // exports.forgotPassword = async (email) => {
 //   const user = await User.findOne({ email });
   
-//   // Don't reveal if the email exists (prevents enumeration)
 //   if (!user) {
 //     return { resetToken: 'no-op-token-dummy' };
 //   }
 
 //   const resetToken = crypto.randomBytes(20).toString('hex');
 //   user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-//   user.resetPasswordExpire = Date.now() + 30 * 60 * 1000; // 30 minutes
+//   user.resetPasswordExpire = Date.now() + 30 * 60 * 1000;
 //   await user.save();
 
 //   return { resetToken };
@@ -182,18 +169,24 @@
 // };
 
 
+
+
+
 const User = require('../models/User');
 const Student = require('../../students/models/Student');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCK_TIME_MS = 15 * 60 * 1000; // 15 minutes
+// const MAX_FAILED_ATTEMPTS = 5;
+// const LOCK_TIME_MS = 15 * 60 * 1000; // 15 minutes
 
 // 1. LOGIN (Staff & Admin)
 exports.loginUser = async (email, password) => {
-  // 🚨 MUST POPULATE ROLE
-  const user = await User.findOne({ email }).populate('role');
+  // 🚨 POPULATE ROLE AND PERMISSIONS
+  const user = await User.findOne({ email }).populate({
+    path: 'role',
+    populate: { path: 'permissions' }
+  });
   
   if (!user) throw { statusCode: 401, message: 'Invalid credentials' };
   if (!user.is_active) throw { statusCode: 403, message: 'Account is deactivated' };
@@ -219,7 +212,6 @@ exports.loginUser = async (email, password) => {
   user.lock_until = null;
   await user.save();
 
-  // 🚨 USE user.role.name
   const accessToken = jwt.sign(
     { id: user._id, role: user.role.name }, 
     process.env.JWT_ACCESS_SECRET, 
@@ -232,11 +224,16 @@ exports.loginUser = async (email, password) => {
     { expiresIn: `${process.env.REFRESH_TTL_DAYS}d` }
   );
 
+  // 🚨 EXTRACT PERMISSIONS
+  const permissionCodes = user.role.name === 'super_admin' 
+    ? ['*'] // Give super admin a wildcard
+    : user.role.permissions.map(p => p.code);
+
   return {
     accessToken,
     refreshToken,
-    // 🚨 RETURN user.role.name
-    user: { id: user._id, name: user.name, email: user.email, role: user.role.name }
+    user: { id: user._id, name: user.name, email: user.email, role: user.role.name },
+    permissions: permissionCodes, // 🚨 SEND TO FRONTEND
   };
 };
 
@@ -248,8 +245,10 @@ exports.studentLoginUser = async (phone) => {
     throw { statusCode: 401, message: 'No student found with this phone number' };
   }
 
-  // 🚨 MUST POPULATE ROLE HERE TOO
-  const user = await User.findById(student.user_id).populate('role');
+  const user = await User.findById(student.user_id).populate({
+    path: 'role',
+    populate: { path: 'permissions' }
+  });
 
   if (!user) {
     throw { statusCode: 401, message: 'Student account not found' };
@@ -259,7 +258,6 @@ exports.studentLoginUser = async (phone) => {
     throw { statusCode: 403, message: 'Account is deactivated' };
   }
 
-  // 🚨 CHECK user.role.name
   if (user.role.name !== 'student') {
     throw { statusCode: 403, message: 'Invalid student account' };
   }
@@ -276,6 +274,8 @@ exports.studentLoginUser = async (phone) => {
     { expiresIn: `${process.env.REFRESH_TTL_DAYS}d` }
   );
 
+  const permissionCodes = user.role.permissions.map(p => p.code);
+
   return {
     accessToken,
     refreshToken,
@@ -284,7 +284,8 @@ exports.studentLoginUser = async (phone) => {
       name: student.full_name,
       phone: student.phone,
       role: user.role.name
-    }
+    },
+    permissions: permissionCodes,
   };
 };
 
