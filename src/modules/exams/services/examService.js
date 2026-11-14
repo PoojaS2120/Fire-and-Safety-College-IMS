@@ -116,7 +116,7 @@ const validateReferences = async (data, facultyId) => {
   const [course, batch, faculty] = await Promise.all([
     Course.findById(data.course_id),
     Batch.findById(data.batch_id),
-    User.findById(facultyId),
+    User.findById(facultyId).populate('role'), // <--- ADDED .populate('role')
   ]);
 
   if (!course || course.status !== 'active') {
@@ -134,9 +134,12 @@ const validateReferences = async (data, facultyId) => {
     );
   }
 
+    // Safely check if the populated role name is 'faculty' and they are active
+  const isFacultyRole = faculty && faculty.role && faculty.role.name && faculty.role.name.toLowerCase() === 'faculty';
+
   if (
     !faculty ||
-    faculty.role !== 'faculty' ||
+    !isFacultyRole ||
     !faculty.is_active
   ) {
     fail(400, 'Invalid or inactive faculty');
