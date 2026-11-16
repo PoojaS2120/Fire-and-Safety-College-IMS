@@ -1,3 +1,4 @@
+
 const importExportService = require('../services/importExportService');
 const importExportRegistry = require('../models/importExportRegistry');
 
@@ -29,9 +30,8 @@ exports.importData = async (req, res, next) => {
       });
     }
 
-    const rows = importExportService.parseFile(req.file.buffer);
+    const rows = await importExportService.parseFile(req.file.buffer);
 
-    // Pass authenticated user ID to the import handler.
     const result = await config.importHandler(rows, req.user.id);
 
     return res.status(200).json({
@@ -84,7 +84,7 @@ exports.exportData = async (req, res, next) => {
       };
     }
 
-    const fileBuffer = importExportService.generateFile(
+    const fileBuffer = await importExportService.generateFile(
       result,
       columns,
       format
@@ -135,7 +135,7 @@ exports.downloadTemplate = async (req, res, next) => {
       };
     }
 
-    const fileBuffer = importExportService.generateTemplate(
+    const fileBuffer = await importExportService.generateTemplate(
       columns,
       format
     );

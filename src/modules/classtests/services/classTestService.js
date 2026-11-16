@@ -1015,7 +1015,7 @@ exports.exportMarks = async (
         'marks_obtained'
       ];
 
-  return importExportService.generateFile(
+  return await importExportService.generateFile(
     rows,
     columns,
     format
@@ -1054,7 +1054,7 @@ exports.downloadImportTemplate = async (id, user) => {
     remarks: ''
   }));
 
-  return importExportService.generateFile(
+  return await importExportService.generateFile(
     rows,
     columns,
     'xlsx'
