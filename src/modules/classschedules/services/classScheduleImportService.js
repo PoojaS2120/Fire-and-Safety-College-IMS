@@ -310,10 +310,18 @@ exports.importSchedules = async (buffer, adminId) => {
     }
     return batchCache.get(key);
   };
-  const findFaculty = async (email) => {
+   const findFaculty = async (email) => {
     const key = email.toLowerCase();
     if (!facultyCache.has(key)) {
-      facultyCache.set(key, await User.findOne({ email: key, role: 'faculty', is_active: true }));
+      // 1. Fetch the user and populate the role
+      const user = await User.findOne({ email: key, is_active: true }).populate('role');
+      
+      // 2. Check if the populated role is actually 'faculty'
+      if (user && user.role && user.role.name && user.role.name.toLowerCase() === 'faculty') {
+        facultyCache.set(key, user);
+      } else {
+        facultyCache.set(key, null); // Not a faculty member
+      }
     }
     return facultyCache.get(key);
   };

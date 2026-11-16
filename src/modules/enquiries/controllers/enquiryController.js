@@ -6,6 +6,7 @@ const {
   updateEnquiryStatusSchema,
   convertEnquirySchema,
 } = require('../validations/enquiryValidation');
+
 exports.createEnquiry = async (req, res, next) => {
   try {
     const { error, value } = createEnquirySchema.validate(req.body, {
@@ -46,6 +47,7 @@ exports.getEnquiries = async (req, res, next) => {
     next(error);
   }
 };
+
 exports.getEnquirySummary = async (req, res, next) => {
   try {
     const summary = await enquiryService.getEnquirySummary();
@@ -59,6 +61,7 @@ exports.getEnquirySummary = async (req, res, next) => {
     next(error);
   }
 };
+
 exports.getEnquiryById = async (req, res, next) => {
   try {
     const enquiry = await enquiryService.getEnquiryById(req.params.id);
@@ -72,6 +75,7 @@ exports.getEnquiryById = async (req, res, next) => {
     next(error);
   }
 };
+
 exports.updateEnquiry = async (req, res, next) => {
   try {
     const { error, value } = updateEnquirySchema.validate(req.body, {
@@ -100,6 +104,7 @@ exports.updateEnquiry = async (req, res, next) => {
     next(error);
   }
 };
+
 exports.updateEnquiryStatus = async (req, res, next) => {
   try {
     const { error, value } = updateEnquiryStatusSchema.validate(req.body, {
@@ -128,6 +133,7 @@ exports.updateEnquiryStatus = async (req, res, next) => {
     next(error);
   }
 };
+
 // CONVERT ENQUIRY TO ADMISSION
 exports.convertEnquiry = async (req, res, next) => {
   try {
@@ -154,6 +160,22 @@ exports.convertEnquiry = async (req, res, next) => {
       success: true,
       message: 'Enquiry converted to admission successfully.',
       data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================================
+// NEW: DELETE ENQUIRY
+// ==========================================================
+exports.deleteEnquiry = async (req, res, next) => {
+  try {
+    const result = await enquiryService.deleteEnquiry(req.params.id);
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
     });
   } catch (error) {
     next(error);
