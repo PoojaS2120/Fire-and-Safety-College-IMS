@@ -36,6 +36,14 @@ router.get(
   feeController.checkEligibility
 );
 
+// Edit a specific fee ledger entry
+router.put(
+  '/ledger/:feeId',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  feeController.updateFee
+);
+
 // ================= PAYMENT ROUTES =================
 
 router.post(

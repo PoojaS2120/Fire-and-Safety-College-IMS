@@ -1,4 +1,4 @@
-const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 const mongoose = require('mongoose');
 const Exam = require('../../exams/models/Exam');
 const Student = require('../../students/models/Student');
@@ -133,53 +133,6 @@ const getFilteredStudentIds = async (query = {}) => {
 };
 
 // ================= EXCEL WORKBOOK GENERATOR =================
-
-const generateWorkbook = async (
-  data,
-  columns,
-  sheetName = 'Report'
-) => {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet(sheetName);
-
-  worksheet.columns = columns;
-
-  // Header styling
-  worksheet.getRow(1).font = {
-    bold: true,
-    color: { argb: 'FFFFFFFF' },
-  };
-
-  worksheet.getRow(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF10B981' },
-  };
-
-  // Add report data
-  data.forEach((row) => {
-    worksheet.addRow(row);
-  });
-
-  // Auto-fit columns
-  worksheet.columns.forEach((column) => {
-    let maxLength = 0;
-
-    column.eachCell({ includeEmpty: true }, (cell) => {
-      const columnLength = cell.value
-        ? cell.value.toString().length
-        : 10;
-
-      if (columnLength > maxLength) {
-        maxLength = columnLength;
-      }
-    });
-
-    column.width = maxLength < 10 ? 10 : maxLength + 2;
-  });
-
-  return workbook;
-};
 
 // ============================================================
 // 1. FEE COLLECTION REPORT

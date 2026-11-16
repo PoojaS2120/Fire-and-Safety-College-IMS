@@ -19,5 +19,9 @@ router.put('/:id', enquiryController.updateEnquiry);
 
 router.post('/:id/convert', enquiryController.convertEnquiry);
 
+// NEW: Delete enquiry
+router.delete('/:id', enquiryController.deleteEnquiry);
+
 router.get('/:id', enquiryController.getEnquiryById);
+
 module.exports = router;

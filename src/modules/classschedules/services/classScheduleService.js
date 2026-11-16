@@ -20,7 +20,7 @@ const validateReferences = async (data) => {
   const [course, batch, faculty, assignment] = await Promise.all([
     Course.findById(data.course_id),
     Batch.findById(data.batch_id),
-    User.findById(data.faculty_id),
+    User.findById(data.faculty_id).populate('role'), // <--- ADDED .populate('role')
     FacultyAssignment.findOne({
       faculty_id: data.faculty_id,
       course_id: data.course_id,
@@ -41,10 +41,12 @@ const validateReferences = async (data) => {
     throwError(400, 'Selected batch does not belong to this course');
   }
 
-  if (!faculty || faculty.role !== 'faculty' || !faculty.is_active) {
+    // Safely check if the populated role name is 'faculty' and they are active
+  const isFacultyRole = faculty && faculty.role && faculty.role.name && faculty.role.name.toLowerCase() === 'faculty';
+
+  if (!faculty || !isFacultyRole || !faculty.is_active) {
     throwError(400, 'Invalid or inactive faculty');
   }
-
   if (!assignment) {
     throwError(400, 'Faculty is not assigned to this course, batch and subject');
   }

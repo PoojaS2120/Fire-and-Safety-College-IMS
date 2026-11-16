@@ -122,14 +122,20 @@ router.get(
   '/import/template',
   verifyToken,
   authorize('super_admin', 'office_staff'),
-  (req, res, next) => {
+  async (req, res, next) => {
     try {
-      const buffer = classScheduleImportService.buildTemplateBuffer();
+      const buffer = await classScheduleImportService.buildTemplateBuffer();
+
       res.setHeader(
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       );
-      res.setHeader('Content-Disposition', 'attachment; filename="class_schedules_template.xlsx"');
+
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="class_schedules_template.xlsx"'
+      );
+
       res.send(buffer);
     } catch (err) {
       next(err);

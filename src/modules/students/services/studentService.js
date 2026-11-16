@@ -1,4 +1,3 @@
-
 const mongoose = require('mongoose');
 
 const Student = require('../models/Student');
@@ -155,6 +154,63 @@ exports.createStudent = async (data, adminId) => {
 
 // ================= LIST =================
 // 🚨 FIX: Added 'user' parameter for role-based filtering
+// exports.getStudents = async (query, user) => {
+//   const {
+//     page = 1, limit = 10, status, lifecycle_stage, stage_status, courseId, batchId, batch_id
+//   } = query;
+//   const searchTerm = query.q || query.search;
+
+//   const filter = {};
+//   if (status) filter.status = status;
+//   if (lifecycle_stage) filter.lifecycle_stage = lifecycle_stage;
+//   if (stage_status) filter.stage_status = stage_status;
+//   if (courseId) filter.course_id = courseId;
+  
+//   // Handle both batchId and batch_id
+//   const actualBatchId = batchId || batch_id;
+//   if (actualBatchId) filter.batch_id = actualBatchId;
+
+//   // 🚨 FIX: Faculty can only see students in their assigned batches
+//   if (user && user.role === 'faculty') {
+//     const assignments = await FacultyAssignment.find({ faculty_id: user.id }).select('batch_id');
+//     const allowedBatches = assignments.map(a => a.batch_id);
+    
+//     // If faculty passed a specific batch, ensure it's one they teach
+//     if (actualBatchId && !allowedBatches.some(id => String(id) === String(actualBatchId))) {
+//       throw createError(403, 'You are not assigned to this batch.');
+//     }
+    
+//     // If no specific batch requested, show only students from batches they teach
+//     if (!actualBatchId) {
+//       filter.batch_id = { $in: allowedBatches };
+//     }
+//   }
+
+//   if (searchTerm) {
+//     const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+//     filter.$or = [
+//       { student_id: { $regex: escaped, $options: 'i' } },
+//       { full_name: { $regex: escaped, $options: 'i' } },
+//       { email: { $regex: escaped, $options: 'i' } },
+//       { phone: { $regex: escaped, $options: 'i' } },
+//     ];
+//   }
+
+//   const skip = (page - 1) * limit;
+//   const [students, total] = await Promise.all([
+//     Student.find(filter)
+//       .populate('user_id', 'name email phone is_active')
+//       .populate('course_id', 'name duration status')
+//       .populate('batch_id', 'name start_date end_date status')
+//       .populate('created_by', 'name email')
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit),
+//     Student.countDocuments(filter),
+//   ]);
+
+//   return { students, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+// };
 exports.getStudents = async (query, user) => {
   const {
     page = 1, limit = 10, status, lifecycle_stage, stage_status, courseId, batchId, batch_id
@@ -220,7 +276,6 @@ exports.getStudents = async (query, user) => {
 
   return { students, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
 };
-
 // ... Rest of the file remains EXACTLY the same ...
 exports.getStudentById = async (id) => {
   validateObjectId(id);
@@ -357,20 +412,8 @@ exports.assignCourseAndBatch = async (id, courseId, batchId) => {
 
 // exports.updateStudentStatus = async (id, status) => {
 //   validateObjectId(id);
-
 //   const student = await Student.findById(id);
-
-//   if (!student) {
-//     throw createError(404, 'Student not found.');
-//   }
-
-//   // Check outstanding library books before changing status.
-//   if (
-//     ['left', 'completed'].includes(status) &&
-//     status !== student.status
-//   ) {
-//     await validateBooksReturned(id);
-//   }
+//   if (!student) throw createError(404, 'Student not found.');
 
 //   const isUserActive = status === 'active';
 
@@ -379,16 +422,13 @@ exports.assignCourseAndBatch = async (id, courseId, batchId) => {
 //     { $set: { is_active: isUserActive } },
 //     { returnDocument: 'after', runValidators: true }
 //   );
-
-//   if (!updatedUser) {
-//     throw createError(404, 'Linked student user not found.');
-//   }
+//   if (!updatedUser) throw createError(404, 'Linked student user not found.');
 
 //   student.status = status;
 //   await student.save();
-
 //   return student;
 // };
+
 exports.updateStudentStatus = async (id, status) => {
   validateObjectId(id);
 

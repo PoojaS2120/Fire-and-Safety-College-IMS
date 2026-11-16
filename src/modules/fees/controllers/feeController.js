@@ -385,3 +385,34 @@ exports.getMyPayments = async (req, res, next) => {
     next(err);
   }
 };
+// ==========================================================
+// 11. EDIT FEE LEDGER (Staff only)
+// ==========================================================
+exports.updateFee = async (req, res, next) => {
+  try {
+    const { feeId } = req.params;
+    const { amount_due, due_date, required_for_exam } = req.body;
+
+    if (amount_due === undefined && due_date === undefined && required_for_exam === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one field to update is required (amount_due, due_date, or required_for_exam)',
+      });
+    }
+
+    const updatedFee = await feeService.updateFeeLedger(
+      feeId,
+      { amount_due, due_date, required_for_exam },
+      req.user.id,
+      req.ip
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Fee record updated successfully',
+      data: updatedFee,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
