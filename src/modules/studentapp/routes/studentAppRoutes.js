@@ -105,6 +105,8 @@
 //   feeController.getReceipt
 // );
 
+
+
 // // ==========================================
 // // STUDENT APK - LIBRARY
 // // ==========================================
@@ -149,7 +151,15 @@
 //   studentAppController.getStudentBatchNotices
 // );
 
+// router.get(
+//   '/documents',
+//   authorize('student'),
+//   studentAppController.getStudentDocuments
+// );
+
 // module.exports = router;
+
+
 
 
 const express = require('express');
@@ -308,4 +318,9 @@ router.get(
   studentAppController.getStudentDocuments
 );
 
+// Get payment receipt information as JSON
+router.get(
+  '/payments/:paymentId/receipt',
+  feeController.getReceipt
+);
 module.exports = router;

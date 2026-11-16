@@ -86,15 +86,15 @@ const runEligibilityChecks = async (studentId, type) => {
     }
   }
 
-  // Check 2: Certificate-specific student status
-  const requiredStatus = type === 'TC' ? 'left' : 'completed';
+  // // Check 2: Certificate-specific student status
+  // const requiredStatus = type === 'TC' ? 'left' : 'completed';
 
-  if (student.status !== requiredStatus) {
-    isEligible = false;
-    notes.push(
-      `${type} requires student status "${requiredStatus}". Current status is "${student.status}".`
-    );
-  }
+  // if (student.status !== requiredStatus) {
+  //   isEligible = false;
+  //   notes.push(
+  //     `${type} requires student status "${requiredStatus}". Current status is "${student.status}".`
+  //   );
+  // }
 
   // Check 3: Already has an approved or issued certificate
   const existingIssued = await TcLc.findOne({
