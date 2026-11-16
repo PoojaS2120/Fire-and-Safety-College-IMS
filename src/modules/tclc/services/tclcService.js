@@ -9,14 +9,66 @@ const PDFDocument = require('pdfkit');
 // ==========================================================
 // HELPER: Eligibility check (fixed fee logic)
 // ==========================================================
-const runEligibilityChecks = async (studentId) => {
+// const runEligibilityChecks = async (studentId) => {
+//   const student = await Student.findById(studentId).populate('course_id', 'name');
+//   if (!student) throw { statusCode: 404, message: 'Student not found' };
+
+//   let isEligible = true;
+//   const notes = [];
+
+//   // Check 1: Pending fees (use amount_due - amount_paid, since StudentFee has no pending_amount)
+//   const pendingFees = await StudentFee.find({
+//     student_id: studentId,
+//     status: { $ne: 'paid' },
+//   });
+
+//   if (pendingFees.length > 0) {
+//     const totalDue = pendingFees.reduce((sum, fee) => {
+//       const balance = Number(fee.amount_due || 0) - Number(fee.amount_paid || 0);
+//       return sum + (balance > 0 ? balance : 0);
+//     }, 0);
+
+//     if (totalDue > 0) {
+//       isEligible = false;
+//       notes.push(`Pending fees: ₹${totalDue.toFixed(2)} (${pendingFees.length} component(s))`);
+//     }
+//   }
+
+//   // Check 2: Course completion
+//   if (student.status !== 'completed') {
+//     isEligible = false;
+//     notes.push(`Course status is "${student.status}". Must be "completed" for TC/LC.`);
+//   }
+
+//   // Check 3: Already has issued TC/LC
+//   const existingIssued = await TcLc.findOne({
+//     student_id: studentId,
+//     status: { $in: ['approved', 'issued'] },
+//   });
+
+//   if (existingIssued) {
+//     isEligible = false;
+//     notes.push(`A certificate (${existingIssued.type}) is already issued for this student.`);
+//   }
+
+//   return { isEligible, notes, student };
+// };
+
+const runEligibilityChecks = async (studentId, type) => {
   const student = await Student.findById(studentId).populate('course_id', 'name');
-  if (!student) throw { statusCode: 404, message: 'Student not found' };
+
+  if (!student) {
+    throw { statusCode: 404, message: 'Student not found' };
+  }
+
+  if (!['TC', 'LC'].includes(type)) {
+    throw { statusCode: 400, message: 'Type must be TC or LC' };
+  }
 
   let isEligible = true;
   const notes = [];
 
-  // Check 1: Pending fees (use amount_due - amount_paid, since StudentFee has no pending_amount)
+  // Check 1: Pending fees
   const pendingFees = await StudentFee.find({
     student_id: studentId,
     status: { $ne: 'paid' },
@@ -34,13 +86,17 @@ const runEligibilityChecks = async (studentId) => {
     }
   }
 
-  // Check 2: Course completion
-  if (student.status !== 'completed') {
+  // Check 2: Certificate-specific student status
+  const requiredStatus = type === 'TC' ? 'left' : 'completed';
+
+  if (student.status !== requiredStatus) {
     isEligible = false;
-    notes.push(`Course status is "${student.status}". Must be "completed" for TC/LC.`);
+    notes.push(
+      `${type} requires student status "${requiredStatus}". Current status is "${student.status}".`
+    );
   }
 
-  // Check 3: Already has issued TC/LC
+  // Check 3: Already has an approved or issued certificate
   const existingIssued = await TcLc.findOne({
     student_id: studentId,
     status: { $in: ['approved', 'issued'] },
@@ -54,6 +110,7 @@ const runEligibilityChecks = async (studentId) => {
   return { isEligible, notes, student };
 };
 
+
 // ==========================================================
 // 1. REQUEST TC/LC
 // ==========================================================
@@ -62,7 +119,7 @@ exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
     throw { statusCode: 400, message: 'Type must be TC or LC' };
   }
 
-  const { isEligible, notes } = await runEligibilityChecks(studentId);
+  const { isEligible, notes } = await runEligibilityChecks(studentId, type);
 
   if (!isEligible) {
     throw { statusCode: 400, message: `Cannot request TC/LC. ${notes.join(' ')}` };
@@ -79,14 +136,16 @@ exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
     throw { statusCode: 409, message: `A ${type} request is already pending for this student.` };
   }
 
-  const request = await TcLc.create({
-    student_id: studentId,
-    type,
-    reason,
-    requested_by: staffId,
-    status: 'requested',
-    eligibility_note: 'Eligible: No dues and course completed.',
-  });
+ const request = await TcLc.create({
+  student_id: studentId,
+  type,
+  reason,
+  requested_by: staffId,
+  status: 'requested',
+  eligibility_note: type === 'TC'
+    ? 'Eligible: No dues and student status is left.'
+    : 'Eligible: No dues and course completed.',
+});
 
   // Audit
   if (req) {
@@ -154,8 +213,10 @@ exports.checkTcLcEligibility = async (requestId) => {
   const request = await TcLc.findById(requestId);
   if (!request) throw { statusCode: 404, message: 'Request not found' };
 
-  const { isEligible, notes } = await runEligibilityChecks(request.student_id);
-
+  const { isEligible, notes } = await runEligibilityChecks(
+  request.student_id,
+  request.type
+);
   return {
     type: request.type,
     isEligible,
@@ -166,11 +227,15 @@ exports.checkTcLcEligibility = async (requestId) => {
 // ==========================================================
 // 4b. CHECK ELIGIBILITY FOR ANY STUDENT (before requesting)
 // ==========================================================
-exports.checkStudentEligibility = async (studentId) => {
-  const { isEligible, notes } = await runEligibilityChecks(studentId);
+exports.checkStudentEligibility = async (studentId, type) => {
+  const { isEligible, notes } = await runEligibilityChecks(studentId, type);
+
   return {
+    type,
     isEligible,
-    reasons: notes.length > 0 ? notes : ['All clear. Eligible for certificate.'],
+    reasons: notes.length > 0
+      ? notes
+      : ['All clear. Eligible for certificate.'],
   };
 };
 
@@ -185,8 +250,11 @@ exports.approveTcLc = async (requestId, adminId, req) => {
   }
 
   // Re-check eligibility before approving (fees might have been added since request)
-  const { isEligible, notes } = await runEligibilityChecks(request.student_id);
-  if (!isEligible) {
+const { isEligible, notes } = await runEligibilityChecks(
+  request.student_id,
+  request.type
+); 
+if (!isEligible) {
     throw { statusCode: 400, message: `Cannot approve. ${notes.join(' ')}` };
   }
 
@@ -202,9 +270,7 @@ exports.approveTcLc = async (requestId, adminId, req) => {
   request.issue_date = new Date();
   await request.save();
 
-  // Update student status
-  await Student.findByIdAndUpdate(request.student_id, { status: 'tc_issued' });
-
+ 
   // Audit
   if (req) {
     await auditService.logAction({

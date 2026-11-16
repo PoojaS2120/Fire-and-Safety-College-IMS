@@ -54,9 +54,15 @@ exports.checkEligibility = async (req, res, next) => {
 
 exports.checkStudentEligibility = async (req, res, next) => {
   try {
-    const result = await tclcService.checkStudentEligibility(req.params.studentId);
+    const result = await tclcService.checkStudentEligibility(
+      req.params.studentId,
+      req.query.type
+    );
+
     res.status(200).json({ success: true, data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 exports.approveRequest = async (req, res, next) => {

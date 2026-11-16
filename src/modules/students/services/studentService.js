@@ -8,7 +8,8 @@ const User = require('../../auth/models/User');
 const Course = require('../../courses/models/Course');
 const Batch = require('../../courses/models/Batch');
 const FacultyAssignment = require('../../faculty/models/FacultyAssignment');
-
+const BookIssue = require('../../library/models/BookIssue');
+const TcLc = require('../../tclc/models/TcLc');
 function createError(statusCode, message) {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -35,6 +36,33 @@ async function validateAssignments(courseId, batchId) {
     if (batch.course_id.toString() !== courseId.toString()) {
       throw createError(400, 'Selected batch does not belong to the selected course.');
     }
+  }
+}
+
+// Check whether all library books issued to a student have been returned.
+async function validateBooksReturned(studentId) {
+  const pendingIssues = await BookIssue.find({
+    student: studentId,
+    status: { $in: ['issued', 'overdue'] },
+  })
+    .populate('book', 'title bookTitle name')
+    .lean();
+
+  if (pendingIssues.length > 0) {
+    const bookDetails = pendingIssues.map((issue) => {
+      const bookName =
+        issue.book?.title ||
+        issue.book?.bookTitle ||
+        issue.book?.name ||
+        'Unknown book';
+
+      return bookName;
+    });
+
+    throw createError(
+      400,
+      `Cannot change student status. ${pendingIssues.length} book(s) are still not returned: ${bookDetails.join(', ')}. Please return all issued books first.`
+    );
   }
 }
 
@@ -134,11 +162,19 @@ exports.getStudents = async (query, user) => {
   const searchTerm = query.q || query.search;
 
   const filter = {};
+
+  // Exclude students whose TC has been approved
+  const tcApprovedStudentIds = await TcLc.distinct('student_id', {
+    type: 'TC',
+    status: 'approved',
+  });
+  filter._id = { $nin: tcApprovedStudentIds };
+
   if (status) filter.status = status;
   if (lifecycle_stage) filter.lifecycle_stage = lifecycle_stage;
   if (stage_status) filter.stage_status = stage_status;
   if (courseId) filter.course_id = courseId;
-  
+
   // Handle both batchId and batch_id
   const actualBatchId = batchId || batch_id;
   if (actualBatchId) filter.batch_id = actualBatchId;
@@ -147,12 +183,12 @@ exports.getStudents = async (query, user) => {
   if (user && user.role === 'faculty') {
     const assignments = await FacultyAssignment.find({ faculty_id: user.id }).select('batch_id');
     const allowedBatches = assignments.map(a => a.batch_id);
-    
+
     // If faculty passed a specific batch, ensure it's one they teach
     if (actualBatchId && !allowedBatches.some(id => String(id) === String(actualBatchId))) {
       throw createError(403, 'You are not assigned to this batch.');
     }
-    
+
     // If no specific batch requested, show only students from batches they teach
     if (!actualBatchId) {
       filter.batch_id = { $in: allowedBatches };
@@ -225,22 +261,70 @@ exports.getStudentSummary = async (id) => {
   };
 };
 
+// exports.updateStudent = async (id, data) => {
+//   validateObjectId(id);
+//   const existing = await Student.findById(id);
+//   if (!existing) throw createError(404, 'Student not found.');
+
+//   const courseId = Object.prototype.hasOwnProperty.call(data, 'course_id')
+//     ? data.course_id : existing.course_id.toString();
+//   const batchId = Object.prototype.hasOwnProperty.call(data, 'batch_id')
+//     ? data.batch_id : existing.batch_id?.toString();
+
+//   await validateAssignments(courseId, batchId);
+
+//   const updateData = { ...data };
+//   if (Object.prototype.hasOwnProperty.call(updateData, 'email')) {
+//     updateData.email = updateData.email || null;
+//   }
+//   if (Object.prototype.hasOwnProperty.call(updateData, 'batch_id')) {
+//     updateData.batch_id = updateData.batch_id || null;
+//   }
+
+//   return Student.findByIdAndUpdate(
+//     id,
+//     { $set: updateData },
+//     { returnDocument: 'after', runValidators: true }
+//   )
+//     .populate('user_id', 'name email phone is_active')
+//     .populate('course_id', 'name duration status')
+//     .populate('batch_id', 'name start_date end_date status');
+// };
+
+
 exports.updateStudent = async (id, data) => {
   validateObjectId(id);
+
   const existing = await Student.findById(id);
-  if (!existing) throw createError(404, 'Student not found.');
+
+  if (!existing) {
+    throw createError(404, 'Student not found.');
+  }
+
+  // Prevent bypassing the library return validation through profile update.
+  if (
+    ['left', 'completed'].includes(data.status) &&
+    data.status !== existing.status
+  ) {
+    await validateBooksReturned(id);
+  }
 
   const courseId = Object.prototype.hasOwnProperty.call(data, 'course_id')
-    ? data.course_id : existing.course_id.toString();
+    ? data.course_id
+    : existing.course_id.toString();
+
   const batchId = Object.prototype.hasOwnProperty.call(data, 'batch_id')
-    ? data.batch_id : existing.batch_id?.toString();
+    ? data.batch_id
+    : existing.batch_id?.toString();
 
   await validateAssignments(courseId, batchId);
 
   const updateData = { ...data };
+
   if (Object.prototype.hasOwnProperty.call(updateData, 'email')) {
     updateData.email = updateData.email || null;
   }
+
   if (Object.prototype.hasOwnProperty.call(updateData, 'batch_id')) {
     updateData.batch_id = updateData.batch_id || null;
   }
@@ -271,22 +355,72 @@ exports.assignCourseAndBatch = async (id, courseId, batchId) => {
   return student;
 };
 
+// exports.updateStudentStatus = async (id, status) => {
+//   validateObjectId(id);
+
+//   const student = await Student.findById(id);
+
+//   if (!student) {
+//     throw createError(404, 'Student not found.');
+//   }
+
+//   // Check outstanding library books before changing status.
+//   if (
+//     ['left', 'completed'].includes(status) &&
+//     status !== student.status
+//   ) {
+//     await validateBooksReturned(id);
+//   }
+
+//   const isUserActive = status === 'active';
+
+//   const updatedUser = await User.findByIdAndUpdate(
+//     student.user_id,
+//     { $set: { is_active: isUserActive } },
+//     { returnDocument: 'after', runValidators: true }
+//   );
+
+//   if (!updatedUser) {
+//     throw createError(404, 'Linked student user not found.');
+//   }
+
+//   student.status = status;
+//   await student.save();
+
+//   return student;
+// };
 exports.updateStudentStatus = async (id, status) => {
   validateObjectId(id);
-  const student = await Student.findById(id);
-  if (!student) throw createError(404, 'Student not found.');
 
+  const student = await Student.findById(id);
+
+  if (!student) {
+    throw createError(404, 'Student not found.');
+  }
+
+  // 1. Check pending books before changing status
+  if (
+    ['left', 'completed'].includes(status) &&
+    status !== student.status
+  ) {
+    await validateBooksReturned(id);
+  }
+
+  // 2. Update linked user only if the User record exists
   const isUserActive = status === 'active';
 
-  const updatedUser = await User.findByIdAndUpdate(
-    student.user_id,
-    { $set: { is_active: isUserActive } },
-    { returnDocument: 'after', runValidators: true }
-  );
-  if (!updatedUser) throw createError(404, 'Linked student user not found.');
+  if (student.user_id) {
+    await User.findByIdAndUpdate(
+      student.user_id,
+      { $set: { is_active: isUserActive } },
+      { returnDocument: 'after', runValidators: true }
+    );
+  }
 
+  // 3. Update student status
   student.status = status;
   await student.save();
+
   return student;
 };
 
