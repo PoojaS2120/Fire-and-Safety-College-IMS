@@ -1,9 +1,13 @@
+
+const XLSX = require('xlsx');
 const reportService = require('../services/reportService');
 
-
-// Helper: Send Excel workbook as a valid XLSX buffer
-const streamExcel = async (res, workbook, filename) => {
-  const buffer = await workbook.xlsx.writeBuffer();
+// Helper: Send SheetJS workbook as a valid XLSX buffer.
+const streamExcel = (res, workbook, filename) => {
+  const buffer = XLSX.write(workbook, {
+    type: 'buffer',
+    bookType: 'xlsx',
+  });
 
   res.setHeader(
     'Content-Type',
@@ -17,7 +21,7 @@ const streamExcel = async (res, workbook, filename) => {
 
   res.setHeader('Content-Length', buffer.length);
 
-  return res.end(Buffer.from(buffer));
+  return res.end(buffer);
 };
 
 // ================= B-28: FEE COLLECTION =================
@@ -28,11 +32,7 @@ exports.downloadFeeCollection = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Fee_Collection_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Fee_Collection_${Date.now()}`);
   } catch (err) {
     next(err);
   }
@@ -46,11 +46,7 @@ exports.downloadPendingFees = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Pending_Fees_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Pending_Fees_${Date.now()}`);
   } catch (err) {
     next(err);
   }
@@ -64,11 +60,7 @@ exports.downloadAdmissions = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Admissions_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Admissions_${Date.now()}`);
   } catch (err) {
     next(err);
   }
@@ -82,11 +74,7 @@ exports.downloadStudents = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Students_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Students_${Date.now()}`);
   } catch (err) {
     next(err);
   }
@@ -100,11 +88,7 @@ exports.downloadEnquiries = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Enquiries_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Enquiries_${Date.now()}`);
   } catch (err) {
     next(err);
   }
@@ -118,11 +102,7 @@ exports.downloadReceipts = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Receipts_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Receipts_${Date.now()}`);
   } catch (err) {
     next(err);
   }
@@ -136,11 +116,7 @@ exports.downloadExamForms = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Exam_Forms_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Exam_Forms_${Date.now()}`);
   } catch (err) {
     next(err);
   }
@@ -152,11 +128,7 @@ exports.downloadOverdueBooks = async (req, res, next) => {
   try {
     const workbook = await reportService.getOverdueBooksReport();
 
-    await streamExcel(
-      res,
-      workbook,
-      `Overdue_Books_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Overdue_Books_${Date.now()}`);
   } catch (err) {
     next(err);
   }
@@ -166,15 +138,12 @@ exports.downloadLibraryInventory = async (req, res, next) => {
   try {
     const workbook = await reportService.getLibraryInventoryReport();
 
-    await streamExcel(
-      res,
-      workbook,
-      `Library_Inventory_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Library_Inventory_${Date.now()}`);
   } catch (err) {
     next(err);
   }
 };
+
 // ================= B-41: COURSE-WISE STUDENTS =================
 
 exports.downloadCourseWiseStudents = async (req, res, next) => {
@@ -183,7 +152,7 @@ exports.downloadCourseWiseStudents = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
+    streamExcel(
       res,
       workbook,
       `Course_Wise_Students_${Date.now()}`
@@ -192,6 +161,7 @@ exports.downloadCourseWiseStudents = async (req, res, next) => {
     next(err);
   }
 };
+
 // ================= B-41: SCHEDULES REPORT =================
 
 exports.downloadSchedules = async (req, res, next) => {
@@ -200,34 +170,27 @@ exports.downloadSchedules = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Schedules_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Schedules_${Date.now()}`);
   } catch (err) {
     next(err);
   }
 };
-// B-41: Class Tests Report
+
+// ================= B-41: CLASS TESTS REPORT =================
+
 exports.downloadClassTests = async (req, res, next) => {
   try {
     const workbook = await reportService.getClassTestsReport(
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Class_Tests_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Class_Tests_${Date.now()}`);
   } catch (error) {
     next(error);
   }
 };
-// =====================================================
-// B-41: EXAMS / RESULTS REPORT
-// =====================================================
+
+// ================= B-41: EXAMS / RESULTS REPORT =================
 
 exports.downloadExamsResults = async (req, res, next) => {
   try {
@@ -235,30 +198,24 @@ exports.downloadExamsResults = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Exams_Results_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Exams_Results_${Date.now()}`);
   } catch (error) {
     next(error);
   }
 };
+
 // ================= B-41: TC / LC REPORT =================
 
 exports.downloadTcLcReport = async (req, res, next) => {
   try {
     const workbook = await reportService.getTcLcReport(req.query);
 
-    await streamExcel(
-      res,
-      workbook,
-      `TC_LC_Report_${Date.now()}`
-    );
+    streamExcel(res, workbook, `TC_LC_Report_${Date.now()}`);
   } catch (err) {
     next(err);
   }
 };
+
 // ================= B-41: LIBRARY ISSUES =================
 
 exports.downloadLibraryIssues = async (req, res, next) => {
@@ -267,11 +224,7 @@ exports.downloadLibraryIssues = async (req, res, next) => {
       req.query
     );
 
-    await streamExcel(
-      res,
-      workbook,
-      `Library_Issues_${Date.now()}`
-    );
+    streamExcel(res, workbook, `Library_Issues_${Date.now()}`);
   } catch (err) {
     next(err);
   }
