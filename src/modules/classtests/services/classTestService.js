@@ -1,4 +1,5 @@
 // const mongoose = require('mongoose');
+
 // const ClassTest = require('../models/ClassTest');
 // const ClassTestMark = require('../models/ClassTestMark');
 
@@ -112,7 +113,7 @@
 //   const [course, batch, faculty] = await Promise.all([
 //     Course.findById(data.course_id),
 //     Batch.findById(data.batch_id),
-//     User.findById(facultyId).populate('role') // <--- ADDED .populate('role')
+//     User.findById(facultyId).populate('role') // Fetch role to avoid validation error
 //   ]);
 
 //   if (!course || course.status !== 'active') {
@@ -127,7 +128,7 @@
 //     fail(400, 'Invalid batch or batch does not belong to course');
 //   }
 
-//     // Safely check if the populated role name is 'faculty' and they are active
+//   // Safely check if the populated role name is 'faculty' and they are active
 //   const isFacultyRole = faculty && faculty.role && faculty.role.name && faculty.role.name.toLowerCase() === 'faculty';
 
 //   if (
@@ -149,6 +150,7 @@
 //     fail(400, 'Passing marks cannot exceed maximum marks');
 //   }
 // };
+
 // const validateStudents = async (test, studentIds) => {
 //   const uniqueIds = [...new Set(studentIds.map(String))];
 
@@ -162,7 +164,7 @@
 //     }
 //   }
 
-//   // 🚨 RELAXED CHECK: Only verify they exist.
+//   // Relaxed check: Only verify they exist.
 //   const students = await Student.find({
 //     _id: { $in: uniqueIds }
 //   }).select('_id student_id full_name');
@@ -367,6 +369,7 @@
 
 //   return test;
 // };
+
 // // =====================================================
 // // GET CLASS TEST MARKS
 // // =====================================================
@@ -396,7 +399,7 @@
 // };
 
 // // =====================================================
-// // 4. UPDATE CLASS TEST
+// // 4. UPDATE CLASS TEST (FIXED)
 // // =====================================================
 
 // exports.updateClassTest = async (id, data, user, ip) => {
@@ -409,19 +412,22 @@
 //   }
 
 //   const oldValues = test.toObject();
+  
+//   const facultyId = user.role === 'faculty' ? user.id : (data.faculty_id || test.faculty_id);
 
-//   const updatedData = {
-//     ...test.toObject(),
-//     ...data
-//   };
+//   // 🚨 SMART VALIDATION FIX: Only validate references if they are actually being changed
+//   const isChangingReferences = 
+//     (data.course_id && String(data.course_id) !== String(test.course_id)) ||
+//     (data.batch_id && String(data.batch_id) !== String(test.batch_id)) ||
+//     (data.faculty_id && String(data.faculty_id) !== String(test.faculty_id)) ||
+//     (data.subject && data.subject !== test.subject);
 
-//   const facultyId =
-//     user.role === 'faculty'
-//       ? user.id
-//       : (data.faculty_id || test.faculty_id);
+//   if (isChangingReferences) {
+//     const updatedData = { ...test.toObject(), ...data };
+//     await validateReferences(updatedData, facultyId);
+//   }
 
-//   await validateReferences(updatedData, facultyId);
-
+//   // Check if new max marks are lower than already entered marks
 //   if (
 //     data.max_marks !== undefined ||
 //     data.passing_marks !== undefined
@@ -1143,7 +1149,11 @@
 
 
 
+
+
+
 const mongoose = require('mongoose');
+const { buildOwnershipFilter } = require('../../../utils/ownershipFilter');
 
 const ClassTest = require('../models/ClassTest');
 const ClassTestMark = require('../models/ClassTestMark');
@@ -1258,7 +1268,7 @@ const validateReferences = async (data, facultyId) => {
   const [course, batch, faculty] = await Promise.all([
     Course.findById(data.course_id),
     Batch.findById(data.batch_id),
-    User.findById(facultyId).populate('role') // Fetch role to avoid validation error
+    User.findById(facultyId).populate('role')
   ]);
 
   if (!course || course.status !== 'active') {
@@ -1273,7 +1283,6 @@ const validateReferences = async (data, facultyId) => {
     fail(400, 'Invalid batch or batch does not belong to course');
   }
 
-  // Safely check if the populated role name is 'faculty' and they are active
   const isFacultyRole = faculty && faculty.role && faculty.role.name && faculty.role.name.toLowerCase() === 'faculty';
 
   if (
@@ -1309,7 +1318,6 @@ const validateStudents = async (test, studentIds) => {
     }
   }
 
-  // Relaxed check: Only verify they exist.
   const students = await Student.find({
     _id: { $in: uniqueIds }
   }).select('_id student_id full_name');
@@ -1428,7 +1436,7 @@ exports.createClassTest = async (data, user, ip) => {
 };
 
 // =====================================================
-// 2. LIST CLASS TESTS
+// 2. LIST CLASS TESTS (UPDATED)
 // =====================================================
 
 exports.listClassTests = async (query, user) => {
@@ -1449,18 +1457,8 @@ exports.listClassTests = async (query, user) => {
     deleted_at: null
   };
 
-  if (user.role === 'faculty') {
-    filter.faculty_id = user.id;
-  } else if (
-    user.role === 'super_admin' ||
-    user.role === 'office_staff'
-  ) {
-    if (faculty_id) {
-      filter.faculty_id = faculty_id;
-    }
-  } else {
-    fail(403, 'You are not authorized to view class tests');
-  }
+  // 🚨 CENTRALIZED OWNERSHIP FILTER
+  Object.assign(filter, buildOwnershipFilter(user, 'faculty_id', query));
 
   if (course_id) filter.course_id = course_id;
   if (batch_id) filter.batch_id = batch_id;
@@ -1544,7 +1542,7 @@ exports.getMarks = async (id, user) => {
 };
 
 // =====================================================
-// 4. UPDATE CLASS TEST (FIXED)
+// 4. UPDATE CLASS TEST
 // =====================================================
 
 exports.updateClassTest = async (id, data, user, ip) => {
@@ -1557,10 +1555,9 @@ exports.updateClassTest = async (id, data, user, ip) => {
   }
 
   const oldValues = test.toObject();
-  
+
   const facultyId = user.role === 'faculty' ? user.id : (data.faculty_id || test.faculty_id);
 
-  // 🚨 SMART VALIDATION FIX: Only validate references if they are actually being changed
   const isChangingReferences = 
     (data.course_id && String(data.course_id) !== String(test.course_id)) ||
     (data.batch_id && String(data.batch_id) !== String(test.batch_id)) ||
@@ -1572,7 +1569,6 @@ exports.updateClassTest = async (id, data, user, ip) => {
     await validateReferences(updatedData, facultyId);
   }
 
-  // Check if new max marks are lower than already entered marks
   if (
     data.max_marks !== undefined ||
     data.passing_marks !== undefined
@@ -1905,14 +1901,12 @@ exports.importMarks = async (
       .replace(/\s+/g, ' ')
       .toLowerCase();
 
-  // Fetch active students belonging to this test's course and batch.
   const students = await Student.find({
     course_id: test.course_id,
     batch_id: test.batch_id,
     status: 'active'
   }).select('_id full_name');
 
-  // Create a name-to-students map.
   const studentMap = new Map();
 
   for (const student of students) {
@@ -1929,7 +1923,6 @@ exports.importMarks = async (
   const errors = [];
   const seenStudents = new Set();
 
-  // Validate all Excel rows before saving.
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index];
     const rowNumber = index + 2;
@@ -2007,7 +2000,6 @@ exports.importMarks = async (
     }
   }
 
-  // Check existing marks.
   const existingMarks = await ClassTestMark.find({
     class_test_id: test._id,
     student_id: {
@@ -2033,7 +2025,6 @@ exports.importMarks = async (
     }
   }
 
-  // If skipping invalid rows is disabled, do not save partial data.
   if (errors.length && !skipInvalidRows) {
     return {
       imported: 0,
@@ -2053,7 +2044,6 @@ exports.importMarks = async (
     errors
   };
 
-  // Save valid entries.
   for (const entry of entries) {
     const existing = await ClassTestMark.findOne({
       class_test_id: test._id,
@@ -2120,7 +2110,7 @@ exports.importMarks = async (
 };
 
 // =====================================================
-// 11. EXPORT MARKS USING COMMON IMPORT/EXPORT SERVICE
+// 11. EXPORT MARKS
 // =====================================================
 
 exports.exportMarks = async (
@@ -2152,27 +2142,14 @@ exports.exportMarks = async (
   });
 
   const columns = includeRemarks
-    ? [
-        'student_id',
-        'student_name',
-        'marks_obtained',
-        'remarks'
-      ]
-    : [
-        'student_id',
-        'student_name',
-        'marks_obtained'
-      ];
+    ? ['student_id', 'student_name', 'marks_obtained', 'remarks']
+    : ['student_id', 'student_name', 'marks_obtained'];
 
-  return await importExportService.generateFile(
-    rows,
-    columns,
-    format
-  );
+  return await importExportService.generateFile(rows, columns, format);
 };
 
 // =====================================================
-// 12. DOWNLOAD IMPORT TEMPLATE - NAME ONLY
+// 12. DOWNLOAD IMPORT TEMPLATE
 // =====================================================
 
 exports.downloadImportTemplate = async (id, user) => {
@@ -2180,7 +2157,6 @@ exports.downloadImportTemplate = async (id, user) => {
 
   checkReadPermission(test, user);
 
-  // Get active students of this test's batch.
   const students = await Student.find({
     course_id: test.course_id,
     batch_id: test.batch_id,
@@ -2190,12 +2166,7 @@ exports.downloadImportTemplate = async (id, user) => {
     .sort({ full_name: 1 })
     .lean();
 
-  // Excel contains only student name, marks and remarks.
-  const columns = [
-    'student_name',
-    'marks_obtained',
-    'remarks'
-  ];
+  const columns = ['student_name', 'marks_obtained', 'remarks'];
 
   const rows = students.map(student => ({
     student_name: student.full_name,
@@ -2203,11 +2174,7 @@ exports.downloadImportTemplate = async (id, user) => {
     remarks: ''
   }));
 
-  return await importExportService.generateFile(
-    rows,
-    columns,
-    'xlsx'
-  );
+  return await importExportService.generateFile(rows, columns, 'xlsx');
 };
 
 // =====================================================
@@ -2243,14 +2210,8 @@ exports.getClassInsights = async (id, user) => {
     };
   }
 
-  const values = marks.map(mark =>
-    Number(mark.marks_obtained)
-  );
-
-  const totalMarks = values.reduce(
-    (sum, value) => sum + value,
-    0
-  );
+  const values = marks.map(mark => Number(mark.marks_obtained));
+  const totalMarks = values.reduce((sum, value) => sum + value, 0);
 
   const passedMarks = marks.filter(
     mark => mark.marks_obtained >= test.passing_marks
@@ -2263,27 +2224,17 @@ exports.getClassInsights = async (id, user) => {
   return {
     test_id: test._id,
     total_students: totalStudents,
-
-    average_marks: Number(
-      (totalMarks / totalStudents).toFixed(2)
-    ),
-
+    average_marks: Number((totalMarks / totalStudents).toFixed(2)),
     highest_marks: Math.max(...values),
     lowest_marks: Math.min(...values),
-
     passed: passedMarks.length,
     failed: failedMarks.length,
-
-    pass_percentage: Number(
-      ((passedMarks.length / totalStudents) * 100).toFixed(2)
-    ),
-
+    pass_percentage: Number(((passedMarks.length / totalStudents) * 100).toFixed(2)),
     top_three: marks.slice(0, 3).map(mark => ({
       student_id: mark.student_id?.student_id,
       student_name: mark.student_id?.full_name,
       marks_obtained: mark.marks_obtained
     })),
-
     below_passing: failedMarks.map(mark => ({
       student_id: mark.student_id?.student_id,
       student_name: mark.student_id?.full_name,

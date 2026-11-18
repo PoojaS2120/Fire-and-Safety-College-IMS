@@ -54,6 +54,9 @@
 //   stage_status: Joi.string().valid(...STAGE_STATUSES).optional(),
 //   courseId: objectId.optional(),
 //   batchId: objectId.optional(),
+  
+//   // 🚨 FIX: Added batch_id so the frontend request doesn't fail
+//   batch_id: objectId.optional(), 
 // }).unknown(false);
 
 // exports.updateStudentStageSchema = Joi.object({
@@ -69,6 +72,11 @@
 
 
 
+
+
+
+
+
 const Joi = require('joi');
 
 const objectId = Joi.string().hex().length(24);
@@ -79,7 +87,9 @@ const LIFECYCLE_STAGES = [
   'class_test', 'exam', 'exam_form', 'test', 'result', 'tc_lc',
 ];
 const STAGE_STATUSES = ['pending', 'in_progress', 'completed', 'blocked'];
-const STUDENT_STATUSES = ['active', 'completed', 'left', 'tc_issued', 'deactive'];
+
+// ===== REPLACED 'deactive' WITH 'blocked' =====
+const STUDENT_STATUSES = ['active', 'completed', 'left', 'tc_issued', 'blocked'];
 
 // CREATE — student_id is auto-generated
 exports.createStudentSchema = Joi.object({
@@ -111,6 +121,7 @@ exports.updateStudentSchema = Joi.object({
   batch_id: objectId.allow('', null).optional(),
 }).min(1).unknown(false);
 
+// ===== USES UPDATED STUDENT_STATUSES (with 'blocked') =====
 exports.updateStudentStatusSchema = Joi.object({
   status: Joi.string().valid(...STUDENT_STATUSES).required(),
 }).unknown(false);
@@ -125,9 +136,7 @@ exports.listStudentsSchema = Joi.object({
   stage_status: Joi.string().valid(...STAGE_STATUSES).optional(),
   courseId: objectId.optional(),
   batchId: objectId.optional(),
-  
-  // 🚨 FIX: Added batch_id so the frontend request doesn't fail
-  batch_id: objectId.optional(), 
+  batch_id: objectId.optional(),
 }).unknown(false);
 
 exports.updateStudentStageSchema = Joi.object({

@@ -1,4 +1,3 @@
-
 // const studentService = require('../services/studentService');
 
 // const {
@@ -7,157 +6,125 @@
 //   updateStudentStatusSchema,
 //   updateStudentStageSchema,
 //   listStudentsSchema,
+//   assignCourseSchema,
 // } = require('../validations/studentValidation');
 
-// // Common validation helper
 // function validate(schema, data, res) {
 //   const { error, value } = schema.validate(data, {
 //     abortEarly: true,
 //     stripUnknown: true,
 //     convert: true,
 //   });
-
 //   if (error) {
-//     res.status(400).json({
-//       success: false,
-//       message: error.details[0].message,
-//     });
-
+//     res.status(400).json({ success: false, message: error.details[0].message });
 //     return null;
 //   }
-
 //   return value;
 // }
 
-// // CREATE STUDENT
 // exports.createStudent = async (req, res, next) => {
 //   try {
 //     const data = validate(createStudentSchema, req.body, res);
 //     if (!data) return;
-
-//     const student = await studentService.createStudent(
-//       data,
-//       req.user.id
-//     );
-
-//     return res.status(201).json({
-//       success: true,
-//       message: 'Student created successfully.',
-//       data: student,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
+//     const student = await studentService.createStudent(data, req.user.id);
+//     res.status(201).json({ success: true, message: 'Student created successfully.', data: student });
+//   } catch (error) { next(error); }
 // };
 
-// // GET STUDENTS WITH SEARCH, FILTERS AND PAGINATION
 // exports.getStudents = async (req, res, next) => {
 //   try {
 //     const query = validate(listStudentsSchema, req.query, res);
 //     if (!query) return;
-
 //     const result = await studentService.getStudents(query);
-
-//     return res.status(200).json({
-//       success: true,
-//       data: result.students,
-//       meta: result.meta,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
+//     res.status(200).json({ success: true, data: result.students, meta: result.meta });
+//   } catch (error) { next(error); }
 // };
 
-// // GET STUDENT DETAILS
 // exports.getStudentById = async (req, res, next) => {
 //   try {
 //     const student = await studentService.getStudentById(req.params.id);
-
-//     return res.status(200).json({
-//       success: true,
-//       data: student,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
+//     res.status(200).json({ success: true, data: student });
+//   } catch (error) { next(error); }
 // };
 
-// // UPDATE STUDENT PROFILE
+// exports.getStudentSummary = async (req, res, next) => {
+//   try {
+//     const summary = await studentService.getStudentSummary(req.params.id);
+//     res.status(200).json({ success: true, data: summary });
+//   } catch (error) { next(error); }
+// };
+
 // exports.updateStudent = async (req, res, next) => {
 //   try {
 //     const data = validate(updateStudentSchema, req.body, res);
 //     if (!data) return;
-
-//     const student = await studentService.updateStudent(
-//       req.params.id,
-//       data
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Student updated successfully.',
-//       data: student,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
+//     const student = await studentService.updateStudent(req.params.id, data);
+//     res.status(200).json({ success: true, message: 'Student updated successfully.', data: student });
+//   } catch (error) { next(error); }
 // };
 
-// // UPDATE STUDENT STATUS
+// exports.assignCourseAndBatch = async (req, res, next) => {
+//   try {
+//     const data = validate(assignCourseSchema, req.body, res);
+//     if (!data) return;
+//     const student = await studentService.assignCourseAndBatch(
+//       req.params.id, data.course_id, data.batch_id
+//     );
+//     res.status(200).json({ success: true, message: 'Course and batch assigned successfully.', data: student });
+//   } catch (error) { next(error); }
+// };
+
 // exports.updateStudentStatus = async (req, res, next) => {
 //   try {
-//     const data = validate(updateStudentStatusSchema, req.body, res);
-//     if (!data) return;
+//     const { status, reason } = req.body;
+
+//     const allowedStatuses = ['active', 'completed', 'left', 'tc_issued', 'deactive', 'blocked'];
+//     if (!status || !allowedStatuses.includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: `Status must be one of: ${allowedStatuses.join(', ')}`,
+//       });
+//     }
+
+//     // Reason is mandatory only when blocking
+//     if (status === 'blocked' && (!reason || !reason.trim())) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Block reason is required when blocking a student.',
+//       });
+//     }
 
 //     const student = await studentService.updateStudentStatus(
 //       req.params.id,
-//       data.status
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       message: 'Student status updated successfully.',
-//       data: student,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-// // UPDATE STUDENT LIFECYCLE STAGE
-// exports.updateStudentStage = async (req, res, next) => {
-//   try {
-//     const data = validate(updateStudentStageSchema, req.body, res);
-//     if (!data) return;
-
-//     const student = await studentService.updateStudentStage(
-//       req.params.id,
-//       data,
+//       status,
+//       reason,
 //       req.user.id
 //     );
 
 //     return res.status(200).json({
 //       success: true,
-//       message: 'Student lifecycle stage updated successfully.',
+//       message: `Student status updated to ${status}.`,
 //       data: student,
 //     });
 //   } catch (error) {
 //     next(error);
 //   }
 // };
-// // GET STUDENT LIFECYCLE STAGE HISTORY
+
+// exports.updateStudentStage = async (req, res, next) => {
+//   try {
+//     const data = validate(updateStudentStageSchema, req.body, res);
+//     if (!data) return;
+//     const student = await studentService.updateStudentStage(req.params.id, data, req.user.id);
+//     res.status(200).json({ success: true, message: 'Student lifecycle stage updated successfully.', data: student });
+//   } catch (error) { next(error); }
+// };
+
 // exports.getStudentStageHistory = async (req, res, next) => {
 //   try {
-//     const history = await studentService.getStudentStageHistory(
-//       req.params.id
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       data: history,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
+//     const history = await studentService.getStudentStageHistory(req.params.id);
+//     res.status(200).json({ success: true, data: history });
+//   } catch (error) { next(error); }
 // };
 
 
@@ -185,24 +152,35 @@ function validate(schema, data, res) {
   return value;
 }
 
+// ================= CREATE =================
 exports.createStudent = async (req, res, next) => {
   try {
     const data = validate(createStudentSchema, req.body, res);
     if (!data) return;
     const student = await studentService.createStudent(data, req.user.id);
-    res.status(201).json({ success: true, message: 'Student created successfully.', data: student });
+    res.status(201).json({ 
+      success: true, 
+      message: 'Student created successfully.', 
+      data: student 
+    });
   } catch (error) { next(error); }
 };
 
+// ================= LIST =================
 exports.getStudents = async (req, res, next) => {
   try {
     const query = validate(listStudentsSchema, req.query, res);
     if (!query) return;
-    const result = await studentService.getStudents(query);
-    res.status(200).json({ success: true, data: result.students, meta: result.meta });
+    const result = await studentService.getStudents(query, req.user);
+    res.status(200).json({ 
+      success: true, 
+      data: result.students, 
+      meta: result.meta 
+    });
   } catch (error) { next(error); }
 };
 
+// ================= GET BY ID =================
 exports.getStudentById = async (req, res, next) => {
   try {
     const student = await studentService.getStudentById(req.params.id);
@@ -210,6 +188,7 @@ exports.getStudentById = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// ================= SUMMARY =================
 exports.getStudentSummary = async (req, res, next) => {
   try {
     const summary = await studentService.getStudentSummary(req.params.id);
@@ -217,15 +196,21 @@ exports.getStudentSummary = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// ================= UPDATE =================
 exports.updateStudent = async (req, res, next) => {
   try {
     const data = validate(updateStudentSchema, req.body, res);
     if (!data) return;
     const student = await studentService.updateStudent(req.params.id, data);
-    res.status(200).json({ success: true, message: 'Student updated successfully.', data: student });
+    res.status(200).json({ 
+      success: true, 
+      message: 'Student updated successfully.', 
+      data: student 
+    });
   } catch (error) { next(error); }
 };
 
+// ================= ASSIGN COURSE & BATCH =================
 exports.assignCourseAndBatch = async (req, res, next) => {
   try {
     const data = validate(assignCourseSchema, req.body, res);
@@ -233,28 +218,50 @@ exports.assignCourseAndBatch = async (req, res, next) => {
     const student = await studentService.assignCourseAndBatch(
       req.params.id, data.course_id, data.batch_id
     );
-    res.status(200).json({ success: true, message: 'Course and batch assigned successfully.', data: student });
+    res.status(200).json({ 
+      success: true, 
+      message: 'Course and batch assigned successfully.', 
+      data: student 
+    });
   } catch (error) { next(error); }
 };
 
+// ================= UPDATE STATUS (Simplified) =================
 exports.updateStudentStatus = async (req, res, next) => {
   try {
     const data = validate(updateStudentStatusSchema, req.body, res);
     if (!data) return;
-    const student = await studentService.updateStudentStatus(req.params.id, data.status);
-    res.status(200).json({ success: true, message: 'Student status updated successfully.', data: student });
-  } catch (error) { next(error); }
+
+    const student = await studentService.updateStudentStatus(
+      req.params.id,
+      data.status
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Student status updated to ${data.status}.`,
+      data: student,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
+// ================= UPDATE STAGE =================
 exports.updateStudentStage = async (req, res, next) => {
   try {
     const data = validate(updateStudentStageSchema, req.body, res);
     if (!data) return;
     const student = await studentService.updateStudentStage(req.params.id, data, req.user.id);
-    res.status(200).json({ success: true, message: 'Student lifecycle stage updated successfully.', data: student });
+    res.status(200).json({ 
+      success: true, 
+      message: 'Student lifecycle stage updated successfully.', 
+      data: student 
+    });
   } catch (error) { next(error); }
 };
 
+// ================= STAGE HISTORY =================
 exports.getStudentStageHistory = async (req, res, next) => {
   try {
     const history = await studentService.getStudentStageHistory(req.params.id);

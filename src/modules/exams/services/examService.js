@@ -1,4 +1,3 @@
-
 // const mongoose = require('mongoose');
 
 // const Exam = require('../models/Exam');
@@ -88,7 +87,6 @@
 //   }
 // };
 
-
 // const writeAudit = async (
 //   user,
 //   action,
@@ -117,7 +115,7 @@
 //   const [course, batch, faculty] = await Promise.all([
 //     Course.findById(data.course_id),
 //     Batch.findById(data.batch_id),
-//     User.findById(facultyId).populate('role'), // <--- ADDED .populate('role')
+//     User.findById(facultyId).populate('role'), // Fetch role to avoid validation error
 //   ]);
 
 //   if (!course || course.status !== 'active') {
@@ -135,7 +133,7 @@
 //     );
 //   }
 
-//     // Safely check if the populated role name is 'faculty' and they are active
+//   // Safely check if the populated role name is 'faculty' and they are active
 //   const isFacultyRole = faculty && faculty.role && faculty.role.name && faculty.role.name.toLowerCase() === 'faculty';
 
 //   if (
@@ -186,7 +184,6 @@
 //   }
 
 //   // Relaxed check: Only ensure the students exist. 
-//   // We removed the strict course_id, batch_id, and active status checks.
 //   const students = await Student.find({
 //     _id: { $in: uniqueIds },
 //   }).select('_id student_id full_name');
@@ -364,8 +361,9 @@
 //   checkReadPermission(exam, user);
 //   return exam;
 // };
+
 // // =====================================================
-// // 4. UPDATE EXAM
+// // 4. UPDATE EXAM (FIXED)
 // // =====================================================
 
 // exports.updateExam = async (id, data, user, ip) => {
@@ -389,7 +387,24 @@
 //       ? user.id
 //       : (data.faculty_id || exam.faculty_id);
 
-//   await validateReferences(updatedData, facultyId);
+//   // 🚨 SMART VALIDATION FIX
+//   // Only validate references if the course, batch, faculty, or subject is actually being changed
+//   const isChangingReferences = 
+//     (data.course_id && String(data.course_id) !== String(exam.course_id)) ||
+//     (data.batch_id && String(data.batch_id) !== String(exam.batch_id)) ||
+//     (data.faculty_id && String(data.faculty_id) !== String(exam.faculty_id)) ||
+//     (data.subject && data.subject !== exam.subject);
+
+//   if (isChangingReferences) {
+//     await validateReferences(updatedData, facultyId);
+//   } else {
+//     // If we are ONLY updating marks/dates/status, just check the max/passing marks logic
+//     const maxMarks = data.max_marks ?? exam.max_marks;
+//     const passMarks = data.passing_marks ?? exam.passing_marks;
+//     if (Number(passMarks) > Number(maxMarks)) {
+//       fail(400, 'Passing marks cannot exceed maximum marks');
+//     }
+//   }
 
 //   // Existing marks must not exceed the new maximum marks.
 //   if (data.max_marks !== undefined) {
@@ -676,7 +691,9 @@
 
 
 
+
 const mongoose = require('mongoose');
+const { buildOwnershipFilter } = require('../../../utils/ownershipFilter');
 
 const Exam = require('../models/Exam');
 const ExamMark = require('../models/ExamMark');
@@ -785,15 +802,11 @@ const writeAudit = async (
   });
 };
 
-// =====================================================
-// REFERENCE VALIDATION
-// =====================================================
-
 const validateReferences = async (data, facultyId) => {
   const [course, batch, faculty] = await Promise.all([
     Course.findById(data.course_id),
     Batch.findById(data.batch_id),
-    User.findById(facultyId).populate('role'), // Fetch role to avoid validation error
+    User.findById(facultyId).populate('role'),
   ]);
 
   if (!course || course.status !== 'active') {
@@ -805,13 +818,9 @@ const validateReferences = async (data, facultyId) => {
     batch.status !== 'active' ||
     String(batch.course_id) !== String(data.course_id)
   ) {
-    fail(
-      400,
-      'Invalid batch or batch does not belong to course'
-    );
+    fail(400, 'Invalid batch or batch does not belong to course');
   }
 
-  // Safely check if the populated role name is 'faculty' and they are active
   const isFacultyRole = faculty && faculty.role && faculty.role.name && faculty.role.name.toLowerCase() === 'faculty';
 
   if (
@@ -838,16 +847,10 @@ const validateReferences = async (data, facultyId) => {
     data.form_end_date &&
     new Date(data.form_end_date) < new Date(data.form_start_date)
   ) {
-    fail(
-      400,
-      'Form end date cannot be before form start date'
-    );
+    fail(400, 'Form end date cannot be before form start date');
   }
 };
 
-// =====================================================
-// STUDENT AND MARK VALIDATION
-// =====================================================
 const validateStudents = async (exam, studentIds) => {
   const uniqueIds = [...new Set(studentIds.map(String))];
 
@@ -861,7 +864,6 @@ const validateStudents = async (exam, studentIds) => {
     }
   }
 
-  // Relaxed check: Only ensure the students exist. 
   const students = await Student.find({
     _id: { $in: uniqueIds },
   }).select('_id student_id full_name');
@@ -945,8 +947,9 @@ exports.createExam = async (data, user, ip) => {
 };
 
 // =====================================================
-// 2. LIST EXAMS (with populate + pagination)
+// 2. LIST EXAMS (UPDATED)
 // =====================================================
+
 exports.listExams = async (query, user) => {
   const {
     page = 1,
@@ -966,13 +969,8 @@ exports.listExams = async (query, user) => {
 
   const filter = { deleted_at: null };
 
-  if (user.role === 'faculty') {
-    filter.faculty_id = user.id;
-  } else if (user.role === 'super_admin' || user.role === 'office_staff') {
-    if (faculty_id) filter.faculty_id = faculty_id;
-  } else {
-    fail(403, 'You are not authorized to view exams');
-  }
+  // 🚨 CENTRALIZED OWNERSHIP FILTER
+  Object.assign(filter, buildOwnershipFilter(user, 'faculty_id', query));
 
   if (course_id) filter.course_id = course_id;
   if (batch_id) filter.batch_id = batch_id;
@@ -1024,8 +1022,9 @@ exports.listExams = async (query, user) => {
 };
 
 // =====================================================
-// 3. GET EXAM BY ID (with populate)
+// 3. GET EXAM BY ID
 // =====================================================
+
 exports.getExamById = async (id, user) => {
   if (!validId(id)) fail(400, 'Invalid exam ID');
 
@@ -1041,7 +1040,7 @@ exports.getExamById = async (id, user) => {
 };
 
 // =====================================================
-// 4. UPDATE EXAM (FIXED)
+// 4. UPDATE EXAM
 // =====================================================
 
 exports.updateExam = async (id, data, user, ip) => {
@@ -1065,8 +1064,6 @@ exports.updateExam = async (id, data, user, ip) => {
       ? user.id
       : (data.faculty_id || exam.faculty_id);
 
-  // 🚨 SMART VALIDATION FIX
-  // Only validate references if the course, batch, faculty, or subject is actually being changed
   const isChangingReferences = 
     (data.course_id && String(data.course_id) !== String(exam.course_id)) ||
     (data.batch_id && String(data.batch_id) !== String(exam.batch_id)) ||
@@ -1076,7 +1073,6 @@ exports.updateExam = async (id, data, user, ip) => {
   if (isChangingReferences) {
     await validateReferences(updatedData, facultyId);
   } else {
-    // If we are ONLY updating marks/dates/status, just check the max/passing marks logic
     const maxMarks = data.max_marks ?? exam.max_marks;
     const passMarks = data.passing_marks ?? exam.passing_marks;
     if (Number(passMarks) > Number(maxMarks)) {
@@ -1084,7 +1080,6 @@ exports.updateExam = async (id, data, user, ip) => {
     }
   }
 
-  // Existing marks must not exceed the new maximum marks.
   if (data.max_marks !== undefined) {
     const existingMarks = await ExamMark.find({
       exam_id: exam._id,

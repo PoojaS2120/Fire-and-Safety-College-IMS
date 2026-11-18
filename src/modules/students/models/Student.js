@@ -1,9 +1,161 @@
+// const mongoose = require('mongoose');
+
+// const studentSchema = new mongoose.Schema(
+//   {
+//     // Admission number
+//     student_id: {
+//       type: String,
+//       required: true,
+//       unique: true,
+//       trim: true,
+//       maxlength: 20,
+//     },
+
+//     // Student login account
+//     user_id: {
+//       type: mongoose.Schema.Types.ObjectId,
+//       ref: 'User',
+//       required: true,
+//       unique: true,
+//     },
+
+//     full_name: {
+//       type: String,
+//       required: true,
+//       trim: true,
+//       maxlength: 150,
+//     },
+
+//     dob: {
+//       type: Date,
+//       required: true,
+//     },
+
+//     gender: {
+//       type: String,
+//       trim: true,
+//       maxlength: 10,
+//       default: null,
+//     },
+
+//     phone: {
+//       type: String,
+//       required: true,
+//       trim: true,
+//       maxlength: 15,
+//     },
+
+//     email: {
+//       type: String,
+//       trim: true,
+//       lowercase: true,
+//       maxlength: 200,
+//       default: null,
+//     },
+
+//     address: {
+//       type: String,
+//       required: true,
+//       trim: true,
+//     },
+
+//     guardian_name: {
+//       type: String,
+//       trim: true,
+//       maxlength: 150,
+//       default: null,
+//     },
+
+//     guardian_phone: {
+//       type: String,
+//       trim: true,
+//       maxlength: 15,
+//       default: null,
+//     },
+
+//     qualification: {
+//       type: String,
+//       required: true,
+//       trim: true,
+//       maxlength: 150,
+//     },
+
+//     course_id: {
+//       type: mongoose.Schema.Types.ObjectId,
+//       ref: 'Course',
+//       required: true,
+//     },
+
+//     batch_id: {
+//       type: mongoose.Schema.Types.ObjectId,
+//       ref: 'Batch',
+//       default: null,
+//     },
+
+//     lifecycle_stage: {
+//       type: String,
+//       enum: [
+//         'enquiry',
+//         'admission',
+//         'documents',
+//         'fees',
+//         'material',
+//         'schedule',
+//         'class_test',
+//         'exam',
+//         'exam_form',
+//         'test',
+//         'result',
+//         'tc_lc',
+//       ],
+//       required: true,
+//       default: 'admission',
+//     },
+
+//     stage_status: {
+//       type: String,
+//       enum: ['pending', 'in_progress', 'completed', 'blocked'],
+//       required: true,
+//       default: 'pending',
+//     },
+
+//     // ===== REPLACED 'deactive' WITH 'blocked' =====
+//     status: {
+//       type: String,
+//       enum: ['active', 'completed', 'left', 'tc_issued', 'blocked'],
+//       required: true,
+//       default: 'active',
+//     },
+
+//     admitted_on: {
+//       type: Date,
+//       required: true,
+//     },
+
+//     created_by: {
+//       type: mongoose.Schema.Types.ObjectId,
+//       ref: 'User',
+//       required: true,
+//     },
+//   },
+//   { timestamps: true }
+// );
+
+// studentSchema.index({ full_name: 1 });
+// studentSchema.index({ phone: 1 });
+// studentSchema.index({ course_id: 1, batch_id: 1 });
+
+// module.exports = mongoose.model('Student', studentSchema);
+
+
+
+
+
 
 const mongoose = require('mongoose');
 
 const studentSchema = new mongoose.Schema(
   {
-    // Admission number
     student_id: {
       type: String,
       required: true,
@@ -11,41 +163,21 @@ const studentSchema = new mongoose.Schema(
       trim: true,
       maxlength: 20,
     },
-
-    // Student login account
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
       unique: true,
     },
-
     full_name: {
       type: String,
       required: true,
       trim: true,
       maxlength: 150,
     },
-
-    dob: {
-      type: Date,
-      required: true,
-    },
-
-    gender: {
-      type: String,
-      trim: true,
-      maxlength: 10,
-      default: null,
-    },
-
-    phone: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 15,
-    },
-
+    dob: { type: Date, required: true },
+    gender: { type: String, trim: true, maxlength: 10, default: null },
+    phone: { type: String, required: true, trim: true, maxlength: 15 },
     email: {
       type: String,
       trim: true,
@@ -53,40 +185,15 @@ const studentSchema = new mongoose.Schema(
       maxlength: 200,
       default: null,
     },
-
-    address: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    guardian_name: {
-      type: String,
-      trim: true,
-      maxlength: 150,
-      default: null,
-    },
-
-    guardian_phone: {
-      type: String,
-      trim: true,
-      maxlength: 15,
-      default: null,
-    },
-
-    qualification: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 150,
-    },
-
+    address: { type: String, required: true, trim: true },
+    guardian_name: { type: String, trim: true, maxlength: 150, default: null },
+    guardian_phone: { type: String, trim: true, maxlength: 15, default: null },
+    qualification: { type: String, required: true, trim: true, maxlength: 150 },
     course_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Course',
       required: true,
     },
-
     batch_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Batch',
@@ -112,7 +219,6 @@ const studentSchema = new mongoose.Schema(
       required: true,
       default: 'admission',
     },
-
     stage_status: {
       type: String,
       enum: ['pending', 'in_progress', 'completed', 'blocked'],
@@ -120,22 +226,43 @@ const studentSchema = new mongoose.Schema(
       default: 'pending',
     },
 
+    // Unchanged from your version — 'deactive' replaced with 'blocked'
     status: {
       type: String,
-      enum: ['active', 'completed', 'left', 'tc_issued', 'deactive'],
+      enum: ['active', 'completed', 'left', 'tc_issued', 'blocked'],
       required: true,
       default: 'active',
     },
 
-    admitted_on: {
-      type: Date,
-      required: true,
-    },
+    admitted_on: { type: Date, required: true },
 
     created_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+    },
+
+    // ============================================================
+    // NEW (fee + concession integration) — purely additive
+    // ============================================================
+    admission_type: {
+      type: String,
+      enum: ['new', 'old'],
+      default: 'new',
+      // 'new' = first-time student; 'old' = re-enrolling student
+      // Used to gate the 'old_student' concession rule.
+    },
+    concession_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ConcessionMaster',
+      default: null,
+      // null = no concession applied
+    },
+    concession_applied_at: { type: Date, default: null },
+    concession_applied_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
   },
   { timestamps: true }
@@ -144,5 +271,7 @@ const studentSchema = new mongoose.Schema(
 studentSchema.index({ full_name: 1 });
 studentSchema.index({ phone: 1 });
 studentSchema.index({ course_id: 1, batch_id: 1 });
+// Helpful for group-concession rule
+studentSchema.index({ course_id: 1, batch_id: 1, concession_id: 1, status: 1 });
 
 module.exports = mongoose.model('Student', studentSchema);

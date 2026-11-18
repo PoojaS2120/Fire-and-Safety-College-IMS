@@ -72,6 +72,17 @@ app.use('/api/v1/audit-logs', require('./modules/audit/routes/auditRoutes'));
 // FEES
 app.use('/api/v1/fees', require('./modules/fees/routes/feeRoutes'));
 
+app.use(
+  '/api/v1/fees/installments',
+  require('./modules/fees/routes/installmentRoutes')
+);
+
+// Concession Master
+app.use(
+  '/api/v1/concessions',
+  require('./modules/fees/routes/concessionRoutes')
+);
+
 // LIBRARY
 app.use('/api/v1/library', require('./modules/library/routes/libraryRoutes'));
 
