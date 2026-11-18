@@ -6,6 +6,7 @@ const { verifyToken } = require('../../../middlewares/auth');
 
 const {
   upload,
+  
   uploadVideo
 } = require('../middleware/uploadMiddleware');
 
