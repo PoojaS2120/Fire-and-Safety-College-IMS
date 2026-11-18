@@ -7,21 +7,34 @@ const {
   convertEnquirySchema,
 } = require('../validations/enquiryValidation');
 
+
 exports.createEnquiry = async (req, res, next) => {
   try {
+
+
     const { error, value } = createEnquirySchema.validate(req.body, {
-      abortEarly: true,
+      abortEarly: false,
       stripUnknown: true,
+      convert: true,
     });
 
     if (error) {
+      console.error('[ENQUIRY VALIDATION ERROR]:', error.details);
+
       return res.status(400).json({
         success: false,
-        message: error.details[0].message,
+        message: error.details.map((detail) => detail.message).join(', '),
       });
     }
 
-    const enquiry = await enquiryService.createEnquiry(value, req.user.id);
+
+
+    const enquiry = await enquiryService.createEnquiry(
+      value,
+      req.user.id
+    );
+
+    console.log('[ENQUIRY CREATE] Successfully saved:', enquiry._id);
 
     return res.status(201).json({
       success: true,
@@ -29,9 +42,11 @@ exports.createEnquiry = async (req, res, next) => {
       data: enquiry,
     });
   } catch (error) {
+    console.error('[ENQUIRY CREATE ERROR]:', error);
     next(error);
   }
 };
+
 
 exports.getEnquiries = async (req, res, next) => {
   try {
