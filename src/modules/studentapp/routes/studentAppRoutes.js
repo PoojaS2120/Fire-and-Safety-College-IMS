@@ -319,8 +319,5 @@ router.get(
 );
 
 // Get payment receipt information as JSON
-router.get(
-  '/payments/:paymentId/receipt',
-  feeController.getReceipt
-);
+
 module.exports = router;
