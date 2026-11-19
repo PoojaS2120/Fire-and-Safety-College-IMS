@@ -57,6 +57,9 @@ app.use(
 app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
 app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
 
+// I-CARDS
+app.use('/api/v1/icards', require('./modules/icards/routes/iCardRoutes'));
+
 // STUDENT RESULTS
 app.use(
   '/api/v1/student-results',
