@@ -43,3 +43,12 @@ exports.updateNoticeStatusSchema = Joi.object({
     .valid('published', 'withdrawn')
     .required()
 });
+exports.uploadPdfNoticeSchema = Joi.object({
+  title: Joi.string().trim().max(200).allow(''),
+
+  description: Joi.string().trim().allow(''),
+
+  targetCourse: objectId.required(),
+
+  targetBatch: objectId.required()
+});
