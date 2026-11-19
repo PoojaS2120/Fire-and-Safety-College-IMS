@@ -177,8 +177,8 @@ const Student = require('../../students/models/Student');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-// const MAX_FAILED_ATTEMPTS = 5;
-// const LOCK_TIME_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_FAILED_ATTEMPTS = 20;
+const LOCK_TIME_MS = 15 * 60 * 1000; // 15 minutes
 
 // 1. LOGIN (Staff & Admin)
 exports.loginUser = async (email, password) => {

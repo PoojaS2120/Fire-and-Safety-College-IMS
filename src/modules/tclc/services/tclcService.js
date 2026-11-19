@@ -9,51 +9,6 @@
 // // ==========================================================
 // // HELPER: Eligibility check (fixed fee logic)
 // // ==========================================================
-// // const runEligibilityChecks = async (studentId) => {
-// //   const student = await Student.findById(studentId).populate('course_id', 'name');
-// //   if (!student) throw { statusCode: 404, message: 'Student not found' };
-
-// //   let isEligible = true;
-// //   const notes = [];
-
-// //   // Check 1: Pending fees (use amount_due - amount_paid, since StudentFee has no pending_amount)
-// //   const pendingFees = await StudentFee.find({
-// //     student_id: studentId,
-// //     status: { $ne: 'paid' },
-// //   });
-
-// //   if (pendingFees.length > 0) {
-// //     const totalDue = pendingFees.reduce((sum, fee) => {
-// //       const balance = Number(fee.amount_due || 0) - Number(fee.amount_paid || 0);
-// //       return sum + (balance > 0 ? balance : 0);
-// //     }, 0);
-
-// //     if (totalDue > 0) {
-// //       isEligible = false;
-// //       notes.push(`Pending fees: ₹${totalDue.toFixed(2)} (${pendingFees.length} component(s))`);
-// //     }
-// //   }
-
-// //   // Check 2: Course completion
-// //   if (student.status !== 'completed') {
-// //     isEligible = false;
-// //     notes.push(`Course status is "${student.status}". Must be "completed" for TC/LC.`);
-// //   }
-
-// //   // Check 3: Already has issued TC/LC
-// //   const existingIssued = await TcLc.findOne({
-// //     student_id: studentId,
-// //     status: { $in: ['approved', 'issued'] },
-// //   });
-
-// //   if (existingIssued) {
-// //     isEligible = false;
-// //     notes.push(`A certificate (${existingIssued.type}) is already issued for this student.`);
-// //   }
-
-// //   return { isEligible, notes, student };
-// // };
-
 // const runEligibilityChecks = async (studentId, type) => {
 //   const student = await Student.findById(studentId).populate('course_id', 'name');
 
@@ -61,7 +16,10 @@
 //     throw { statusCode: 404, message: 'Student not found' };
 //   }
 
-//   if (!['TC', 'LC'].includes(type)) {
+//   // ✅ Convert to uppercase and trim to prevent spacing/case issues
+//   const safeType = String(type).trim().toUpperCase();
+
+//   if (!['TC', 'LC'].includes(safeType)) {
 //     throw { statusCode: 400, message: 'Type must be TC or LC' };
 //   }
 
@@ -86,19 +44,10 @@
 //     }
 //   }
 
-//   // // Check 2: Certificate-specific student status
-//   // const requiredStatus = type === 'TC' ? 'left' : 'completed';
-
-//   // if (student.status !== requiredStatus) {
-//   //   isEligible = false;
-//   //   notes.push(
-//   //     `${type} requires student status "${requiredStatus}". Current status is "${student.status}".`
-//   //   );
-//   // }
-
-//   // Check 3: Already has an approved or issued certificate
+//   // Check 2: Already has an approved or issued certificate OF THE SAME TYPE
 //   const existingIssued = await TcLc.findOne({
 //     student_id: studentId,
+//     type: safeType, // ✅ Only check if they already have this specific type
 //     status: { $in: ['approved', 'issued'] },
 //   });
 
@@ -110,16 +59,19 @@
 //   return { isEligible, notes, student };
 // };
 
-
 // // ==========================================================
 // // 1. REQUEST TC/LC
 // // ==========================================================
 // exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
-//   if (!['TC', 'LC'].includes(type)) {
+//   // ✅ Convert to uppercase and trim here too
+//   const safeType = String(type).trim().toUpperCase();
+
+//   if (!['TC', 'LC'].includes(safeType)) {
 //     throw { statusCode: 400, message: 'Type must be TC or LC' };
 //   }
 
-//   const { isEligible, notes } = await runEligibilityChecks(studentId, type);
+//   // ✅ Pass safeType to the eligibility check
+//   const { isEligible, notes } = await runEligibilityChecks(studentId, safeType);
 
 //   if (!isEligible) {
 //     throw { statusCode: 400, message: `Cannot request TC/LC. ${notes.join(' ')}` };
@@ -128,24 +80,24 @@
 //   // Prevent duplicate active requests
 //   const existingRequest = await TcLc.findOne({
 //     student_id: studentId,
-//     type,
+//     type: safeType, // ✅ Use safeType
 //     status: 'requested',
 //   });
 
 //   if (existingRequest) {
-//     throw { statusCode: 409, message: `A ${type} request is already pending for this student.` };
+//     throw { statusCode: 409, message: `A ${safeType} request is already pending for this student.` };
 //   }
 
-//  const request = await TcLc.create({
-//   student_id: studentId,
-//   type,
-//   reason,
-//   requested_by: staffId,
-//   status: 'requested',
-//   eligibility_note: type === 'TC'
-//     ? 'Eligible: No dues and student status is left.'
-//     : 'Eligible: No dues and course completed.',
-// });
+//   const request = await TcLc.create({
+//     student_id: studentId,
+//     type: safeType, // ✅ Use safeType
+//     reason,
+//     requested_by: staffId,
+//     status: 'requested',
+//     eligibility_note: safeType === 'TC'
+//       ? 'Eligible: No dues and student status is left.'
+//       : 'Eligible: No dues and course completed.',
+//   });
 
 //   // Audit
 //   if (req) {
@@ -155,7 +107,7 @@
 //       entity: 'TcLc',
 //       entityId: request._id,
 //       oldValues: null,
-//       newValues: { student_id: studentId, type, reason, status: 'requested' },
+//       newValues: { student_id: studentId, type: safeType, reason, status: 'requested' },
 //       ip: getIp(req),
 //     });
 //   }
@@ -214,9 +166,10 @@
 //   if (!request) throw { statusCode: 404, message: 'Request not found' };
 
 //   const { isEligible, notes } = await runEligibilityChecks(
-//   request.student_id,
-//   request.type
-// );
+//     request.student_id,
+//     request.type
+//   );
+
 //   return {
 //     type: request.type,
 //     isEligible,
@@ -250,11 +203,12 @@
 //   }
 
 //   // Re-check eligibility before approving (fees might have been added since request)
-// const { isEligible, notes } = await runEligibilityChecks(
-//   request.student_id,
-//   request.type
-// ); 
-// if (!isEligible) {
+//   const { isEligible, notes } = await runEligibilityChecks(
+//     request.student_id,
+//     request.type
+//   ); 
+  
+//   if (!isEligible) {
 //     throw { statusCode: 400, message: `Cannot approve. ${notes.join(' ')}` };
 //   }
 
@@ -270,7 +224,6 @@
 //   request.issue_date = new Date();
 //   await request.save();
 
- 
 //   // Audit
 //   if (req) {
 //     await auditService.logAction({
@@ -391,6 +344,9 @@
 // };
 
 
+
+
+
 const TcLc = require('../models/TcLc');
 const Student = require('../../students/models/Student');
 const StudentFee = require('../../fees/models/StudentFee');
@@ -409,7 +365,6 @@ const runEligibilityChecks = async (studentId, type) => {
     throw { statusCode: 404, message: 'Student not found' };
   }
 
-  // ✅ Convert to uppercase and trim to prevent spacing/case issues
   const safeType = String(type).trim().toUpperCase();
 
   if (!['TC', 'LC'].includes(safeType)) {
@@ -440,7 +395,7 @@ const runEligibilityChecks = async (studentId, type) => {
   // Check 2: Already has an approved or issued certificate OF THE SAME TYPE
   const existingIssued = await TcLc.findOne({
     student_id: studentId,
-    type: safeType, // ✅ Only check if they already have this specific type
+    type: safeType,
     status: { $in: ['approved', 'issued'] },
   });
 
@@ -456,24 +411,21 @@ const runEligibilityChecks = async (studentId, type) => {
 // 1. REQUEST TC/LC
 // ==========================================================
 exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
-  // ✅ Convert to uppercase and trim here too
   const safeType = String(type).trim().toUpperCase();
 
   if (!['TC', 'LC'].includes(safeType)) {
     throw { statusCode: 400, message: 'Type must be TC or LC' };
   }
 
-  // ✅ Pass safeType to the eligibility check
   const { isEligible, notes } = await runEligibilityChecks(studentId, safeType);
 
   if (!isEligible) {
     throw { statusCode: 400, message: `Cannot request TC/LC. ${notes.join(' ')}` };
   }
 
-  // Prevent duplicate active requests
   const existingRequest = await TcLc.findOne({
     student_id: studentId,
-    type: safeType, // ✅ Use safeType
+    type: safeType,
     status: 'requested',
   });
 
@@ -483,7 +435,7 @@ exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
 
   const request = await TcLc.create({
     student_id: studentId,
-    type: safeType, // ✅ Use safeType
+    type: safeType,
     reason,
     requested_by: staffId,
     status: 'requested',
@@ -492,7 +444,6 @@ exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
       : 'Eligible: No dues and course completed.',
   });
 
-  // Audit
   if (req) {
     await auditService.logAction({
       userId: staffId,
@@ -509,18 +460,48 @@ exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
 };
 
 // ==========================================================
-// 2. LIST REQUESTS
+// 2. LIST REQUESTS (UPDATED FOR PAGINATION)
 // ==========================================================
-exports.getAllTcLcRequests = async (status, type) => {
-  const query = {};
-  if (status) query.status = status;
-  if (type) query.type = type;
+exports.getAllTcLcRequests = async (query = {}) => {
+  const filter = {};
 
-  return await TcLc.find(query)
-    .populate('student_id', 'student_id full_name phone')
-    .populate('requested_by', 'name email')
-    .populate('approved_by', 'name email')
-    .sort({ createdAt: -1 });
+  // Filters
+  if (query.status) filter.status = query.status;
+  if (query.type) filter.type = String(query.type).toUpperCase();
+  
+  if (query.search || query.q) {
+    const term = (query.search || query.q).trim();
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Search by certificate number or student name/ID (requires aggregation or specific query structure)
+    // For simplicity, we search by certificate_no here.
+    filter.certificate_no = { $regex: escaped, $options: 'i' };
+  }
+
+  // Pagination (Default 10 per page)
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 10));
+  const skip = (page - 1) * limit;
+
+  const [requests, total] = await Promise.all([
+    TcLc.find(filter)
+      .populate('student_id', 'student_id full_name phone')
+      .populate('requested_by', 'name email')
+      .populate('approved_by', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    TcLc.countDocuments(filter),
+  ]);
+
+  return {
+    requests,
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
 };
 
 // ==========================================================
@@ -595,7 +576,6 @@ exports.approveTcLc = async (requestId, adminId, req) => {
     throw { statusCode: 400, message: `Request is already "${request.status}"` };
   }
 
-  // Re-check eligibility before approving (fees might have been added since request)
   const { isEligible, notes } = await runEligibilityChecks(
     request.student_id,
     request.type
@@ -617,7 +597,6 @@ exports.approveTcLc = async (requestId, adminId, req) => {
   request.issue_date = new Date();
   await request.save();
 
-  // Audit
   if (req) {
     await auditService.logAction({
       userId: adminId,
@@ -654,7 +633,6 @@ exports.rejectTcLc = async (requestId, reason, adminId, req) => {
   request.approved_by = adminId;
   await request.save();
 
-  // Audit
   if (req) {
     await auditService.logAction({
       userId: adminId,
@@ -687,19 +665,15 @@ exports.generateTcLcPDF = async (requestId) => {
   const student = request.student_id;
   const doc = new PDFDocument({ margin: 50 });
 
-  // Format full name in Title Case (e.g., Pooja S Gavit)
   const formattedName = student.full_name.replace(/\w\S*/g, (txt) => 
     txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
   );
 
-  // 1. Conditional Guardian Text
-  // If guardian_name exists, add "son/daughter of [Name]." Otherwise, leave it out.
   let guardianText = '';
   if (student.guardian_name && student.guardian_name.trim() !== '') {
     guardianText = `, son/daughter of ${student.guardian_name},`;
   }
 
-  // Header
   doc.fontSize(22).text('Fire & Safety College', { align: 'center' });
   doc.fontSize(16).text(
     request.type === 'TC' ? 'Transfer Certificate' : 'Leaving Certificate',
@@ -709,7 +683,6 @@ exports.generateTcLcPDF = async (requestId) => {
   doc.fontSize(10).text(`Certificate No: ${request.certificate_no}`, { align: 'right' });
   doc.moveDown();
 
-  // Body
   doc.fontSize(12).text(
     `This is to certify that Mr./Ms. ${formattedName}, bearing Student ID ${student.student_id}${guardianText} was a bonafide student of this institute.`,
     { align: 'justify' }
@@ -726,11 +699,9 @@ exports.generateTcLcPDF = async (requestId) => {
   doc.text(`Reason for leaving: ${request.reason}`);
   doc.moveDown(3);
 
-  // Footer (Static Wording for Date)
   doc.text('Date of Issue: ___________________', { align: 'left' });
   doc.text('Principal / Authorized Signatory', 400, 650, { align: 'right' });
 
-  // End the document
   doc.end(); 
 
   return doc;

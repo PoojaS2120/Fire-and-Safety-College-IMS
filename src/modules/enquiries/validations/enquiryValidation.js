@@ -511,8 +511,3 @@ exports.convertEnquirySchema = Joi.object({
   }).unknown(false).optional(),
 }).unknown(false);
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 8de5ccd76b23aaed698615a77c119839d46e4f00
