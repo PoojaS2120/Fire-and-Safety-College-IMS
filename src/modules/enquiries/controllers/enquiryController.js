@@ -196,3 +196,20 @@ exports.deleteEnquiry = async (req, res, next) => {
     next(error);
   }
 };
+<<<<<<< HEAD
+=======
+
+// GET ADMISSION PREFILL FROM ENQUIRY
+exports.getAdmissionPrefill = async (req, res, next) => {
+  try {
+    const data = await enquiryService.getAdmissionPrefill(req.params.id);
+    return res.status(200).json({
+      success: true,
+      message: 'Admission prefill data retrieved successfully.',
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+>>>>>>> fbb06e7 (Update student admission and backend features)

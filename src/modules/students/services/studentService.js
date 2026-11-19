@@ -384,7 +384,7 @@
 
 
 const mongoose = require('mongoose');
-
+const crypto = require('crypto');
 const Student = require('../models/Student');
 const StudentStageHistory = require('../models/StudentStageHistory');
 const StudentIdCounter = require('../models/StudentIdCounter');
@@ -394,7 +394,13 @@ const Batch = require('../../courses/models/Batch');
 const FacultyAssignment = require('../../faculty/models/FacultyAssignment');
 const BookIssue = require('../../library/models/BookIssue');
 const TcLc = require('../../tclc/models/TcLc');
+<<<<<<< HEAD
 
+=======
+const Role = require('../../rbac/models/Role');
+const StudentFee = require('../../fees/models/StudentFee');
+const FeeComponent = require('../../courses/models/FeeComponent');
+>>>>>>> fbb06e7 (Update student admission and backend features)
 function createError(statusCode, message) {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -450,6 +456,7 @@ async function validateBooksReturned(studentId) {
   }
 }
 
+<<<<<<< HEAD
 async function generateStudentId() {
   const year = new Date().getFullYear();
   const key = `FSC-${year}`;
@@ -471,19 +478,61 @@ async function generateStudentId() {
     { upsert: true }
   );
 
+=======
+// async function generateStudentId() {
+//   const year = new Date().getFullYear();
+//   const key = `FSC-${year}`;
+//   const counter = await StudentIdCounter.findByIdAndUpdate(
+//     key,
+//     { $inc: { sequence: 1 } },
+//     { new: true, upsert: true, setDefaultsOnInsert: true }
+//   );
+//   return `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
+// }
+
+async function generateDirectAdmissionStudentId(year) {
+  const key = `student_id_${year}`;
+
+>>>>>>> fbb06e7 (Update student admission and backend features)
   const counter = await StudentIdCounter.findByIdAndUpdate(
     key,
     { $inc: { sequence: 1 } },
     {
       returnDocument: 'after',
       upsert: true,
-      setDefaultsOnInsert: true
+      setDefaultsOnInsert: true,
     }
   );
 
-  return `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
+  const studentId = `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
+
+<<<<<<< HEAD
+=======
+  const existingStudent = await Student.findOne({ student_id: studentId }).select('_id');
+
+  if (existingStudent) {
+    const latestStudent = await Student.findOne({
+      student_id: new RegExp(`^FSC-${year}-`),
+    })
+      .sort({ student_id: -1 })
+      .select('student_id');
+
+    const match = latestStudent?.student_id?.match(/^FSC-\d+-(\d+)$/);
+    const latestSequence = match ? Number(match[1]) : 0;
+
+    await StudentIdCounter.findByIdAndUpdate(
+      key,
+      { $max: { sequence: latestSequence } },
+      { returnDocument: 'after' }
+    );
+
+    return generateDirectAdmissionStudentId(year);
+  }
+
+  return studentId;
 }
 
+>>>>>>> fbb06e7 (Update student admission and backend features)
 // ================= CREATE =================
 exports.createStudent = async (data, adminId) => {
   validateObjectId(adminId, 'creator user ID');
@@ -750,4 +799,196 @@ exports.getStudentStageHistory = async (id) => {
   return StudentStageHistory.find({ student_id: id })
     .populate('changed_by', 'name email')
     .sort({ changed_at: -1 });
+};
+
+// ================= DIRECT ADMISSION =================
+exports.createDirectAdmission = async (data, staffUserId) => {
+  validateObjectId(staffUserId, 'staff user ID');
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw createError(400, 'Invalid admission data.');
+  }
+
+  if (!data.course_id || !mongoose.isValidObjectId(data.course_id)) {
+    throw createError(400, 'Please select a valid course.');
+  }
+
+  const course = await Course.findById(data.course_id);
+
+  if (!course || course.status !== 'active') {
+    throw createError(400, 'Selected course is not available.');
+  }
+
+  const feeComponents = await FeeComponent.find({
+    course_id: course._id,
+    status: 'active',
+  });
+
+  if (!feeComponents.length) {
+    throw createError(
+      400,
+      'No active fee components are configured for this course.'
+    );
+  }
+
+  const studentRole = await Role.findOne({ name: 'student' });
+
+  if (!studentRole) {
+    throw createError(500, 'System error: Student role not found in database.');
+  }
+
+  const form = data.admission_form || {};
+
+  const fullName = String(data.full_name || '').trim();
+  const phone = String(
+    data.phone || form.contact_details?.mobile_no || ''
+  ).trim();
+  const dob = data.dob;
+  const address = String(
+    data.address ||
+    form.postal_address?.address ||
+    form.permanent_address?.address ||
+    ''
+  ).trim();
+
+  const qualification = String(
+    data.qualification ||
+    form.academic_qualification?.[0]?.examination_passed ||
+    ''
+  ).trim();
+
+  const aadhaar = String(form.aadhaar_number || '').trim();
+
+  if (!fullName) throw createError(400, 'Student name is required.');
+  if (!phone) throw createError(400, 'Student mobile number is required.');
+  if (!dob) throw createError(400, 'Date of birth is required.');
+  if (!address) throw createError(400, 'Student address is required.');
+  if (!qualification) throw createError(400, 'Student qualification is required.');
+
+  if (new Date(dob) >= new Date()) {
+    throw createError(400, 'Date of birth must be in the past.');
+  }
+
+  if (aadhaar && !/^[0-9]{12}$/.test(aadhaar)) {
+    throw createError(400, 'Aadhaar number must contain exactly 12 digits.');
+  }
+
+  const syntheticEmail = `${phone}@ims.com`;
+
+  const existingUser = await User.findOne({ email: syntheticEmail });
+
+  if (existingUser) {
+    throw createError(409, 'A student with this phone number already exists.');
+  }
+
+  const temporaryPassword = crypto.randomBytes(12).toString('base64url');
+
+  let user;
+  let student;
+
+  try {
+    // 1. Create student login account
+    user = await User.create({
+      name: fullName,
+      email: syntheticEmail,
+      phone,
+      password: temporaryPassword,
+      role: studentRole._id,
+      is_active: true,
+      must_change_password: true,
+    });
+
+    // 2. Generate student ID
+    const studentId = await generateDirectAdmissionStudentId(
+      new Date().getFullYear()
+    );
+
+    // 3. Create student profile
+    student = await Student.create({
+      student_id: studentId,
+      user_id: user._id,
+      full_name: fullName,
+      dob,
+      phone,
+      email: data.email || null,
+      address,
+      guardian_name: form.fathers_name || data.guardian_name || null,
+      guardian_phone:
+        data.guardian_phone ||
+        form.contact_details?.home_mobile_no ||
+        null,
+      qualification,
+      course_id: course._id,
+      batch_id: null,
+      source_enquiry_id: null,
+      admission_form: {
+        ...form,
+        aadhaar_number: aadhaar || null,
+      },
+      lifecycle_stage: 'admission',
+      stage_status: 'pending',
+      status: 'active',
+      admitted_on: new Date(),
+      created_by: staffUserId,
+    });
+
+    // 4. Generate student fee records
+    const feeRecords = feeComponents.map((component) => ({
+      student_id: student._id,
+      course_id: course._id,
+      fee_component_id: component._id,
+      fee_name: component.name,
+      amount_due: component.amount,
+      amount_paid: 0,
+      due_date: null,
+      required_for_exam: component.required_for_exam,
+      status: 'pending',
+    }));
+
+    await StudentFee.insertMany(feeRecords);
+
+    // 5. Create initial stage history
+    await StudentStageHistory.create({
+      student_id: student._id,
+      from_stage: null,
+      to_stage: 'admission',
+      stage_status: 'pending',
+      changed_by: staffUserId,
+      changed_at: new Date(),
+      remarks: 'Direct admission without enquiry.',
+    });
+
+  } catch (error) {
+    // Roll back records created during direct admission
+    if (student?._id) {
+      await StudentFee.deleteMany({ student_id: student._id }).catch(() => {});
+      await StudentStageHistory.deleteMany({ student_id: student._id }).catch(() => {});
+      await Student.findByIdAndDelete(student._id).catch(() => {});
+    }
+
+    if (user?._id) {
+      await User.findByIdAndDelete(user._id).catch(() => {});
+    }
+
+    throw error;
+  }
+
+  return {
+    student: {
+      id: student._id,
+      student_id: student.student_id,
+      full_name: student.full_name,
+      email: student.email,
+      course_id: student.course_id,
+      lifecycle_stage: student.lifecycle_stage,
+      source_enquiry_id: null,
+    },
+    account: {
+      email: syntheticEmail,
+      phone,
+      temporary_password: temporaryPassword,
+      must_change_password: true,
+    },
+    fees_generated: feeComponents.length,
+  };
 };

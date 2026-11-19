@@ -137,6 +137,7 @@ const {
   updateStudentStageSchema,
   listStudentsSchema,
   assignCourseSchema,
+  directAdmissionSchema,
 } = require('../validations/studentValidation');
 
 function validate(schema, data, res) {
@@ -267,4 +268,24 @@ exports.getStudentStageHistory = async (req, res, next) => {
     const history = await studentService.getStudentStageHistory(req.params.id);
     res.status(200).json({ success: true, data: history });
   } catch (error) { next(error); }
+};
+
+exports.createDirectAdmission = async (req, res, next) => {
+  try {
+    const data = validate(directAdmissionSchema, req.body, res);
+    if (!data) return;
+
+    const result = await studentService.createDirectAdmission(
+      data,
+      req.user.id
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Direct admission created successfully.',
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
 };

@@ -264,3 +264,153 @@ exports.deleteEnquiry = async (id) => {
     message: 'Enquiry deleted successfully.',
   };
 };
+<<<<<<< HEAD
+=======
+
+// GET ADMISSION PREFILL DATA
+// Returns existing enquiry details in the admission form's expected structure.
+// This endpoint does not create or modify a Student record.
+
+exports.getAdmissionPrefill = async (id) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw createError(400, 'Invalid enquiry ID format.');
+  }
+
+  const enquiry = await Enquiry.findById(id)
+    .populate('course_interest_id', 'name duration status')
+    .lean();
+
+  if (!enquiry) {
+    throw createError(404, 'Enquiry not found.');
+  }
+
+  if (enquiry.status === 'converted' || enquiry.converted_student_id) {
+    throw createError(409, 'This enquiry has already been converted.');
+  }
+
+  if (enquiry.status === 'closed') {
+    throw createError(400, 'Closed enquiries cannot be converted to admission.');
+  }
+
+  const primaryPhone =
+    enquiry.phone || enquiry.mobile || enquiry.phone_tel || '';
+
+  const academicQualifications =
+    Array.isArray(enquiry.academic_qualification) &&
+    enquiry.academic_qualification.length
+      ? enquiry.academic_qualification.map((item) => ({
+          examination_passed: item.examination_passed || '',
+          school_college: item.school_college || '',
+          year_of_passing: item.year_of_passing ?? null,
+          board_university: item.board_university || '',
+          seat_no: item.seat_no || '',
+          marks_out_of: item.marks_out_of ?? null,
+          marks_obtained: item.marks_obtained ?? null,
+          percentage: item.percentage ?? null,
+        }))
+      : enquiry.qualification
+        ? [{
+            examination_passed: enquiry.qualification,
+            school_college: '',
+            year_of_passing: null,
+            board_university: '',
+            seat_no: '',
+            marks_out_of: null,
+            marks_obtained: null,
+            percentage: null,
+          }]
+        : [];
+
+  return {
+    enquiry_id: enquiry._id,
+    source: 'enquiry',
+
+    full_name: enquiry.name || '',
+    dob: enquiry.date_of_birth || enquiry.dob || null,
+    gender: enquiry.gender || null,
+    qualification: enquiry.qualification || '',
+
+    course_id: enquiry.course_interest_id?._id || null,
+    course: enquiry.course_interest_id || null,
+
+    phone: primaryPhone,
+    email: enquiry.email || '',
+    address: enquiry.postal_address?.address || enquiry.address || '',
+
+    guardian_name: enquiry.fathers_name || '',
+    guardian_phone: enquiry.home_mobile_no || '',
+
+    admission_form: {
+      fathers_name: enquiry.fathers_name || '',
+      mothers_name: enquiry.mothers_name || '',
+
+      religion: enquiry.religion || '',
+      caste: enquiry.caste || '',
+      category: enquiry.category || '',
+
+      postal_address: {
+        address: enquiry.postal_address?.address || enquiry.address || '',
+        pin: enquiry.postal_address?.pin || '',
+      },
+
+      permanent_address: {
+        address: enquiry.permanent_address?.address || '',
+        pin: enquiry.permanent_address?.pin || '',
+      },
+
+      contact_details: {
+        contact_no: enquiry.contact_no || enquiry.phone_tel || '',
+        mobile_no: enquiry.mobile || primaryPhone,
+        home_mobile_no: enquiry.home_mobile_no || '',
+      },
+
+      academic_qualification: academicQualifications,
+
+      physical_details: {
+        blood_group: enquiry.blood_group || '',
+        chest: enquiry.chest_cm != null ? String(enquiry.chest_cm) : '',
+        height: enquiry.height_cm != null ? String(enquiry.height_cm) : '',
+        weight: enquiry.weight_kg != null ? String(enquiry.weight_kg) : '',
+        participation: {
+          ncc: Boolean(enquiry.ncc),
+          nss: Boolean(enquiry.nss),
+          scout_guide: Boolean(enquiry.scout_guide),
+        },
+      },
+
+      // These details are collected during admission.
+      aadhaar_number: '',
+
+      images: {
+        student_photo: {},
+        student_signature: {},
+        parent_signature: {},
+      },
+
+      declaration: {
+        place: '',
+        date: null,
+      },
+
+      office_use: {
+       required_documents: {
+  passport_photographs: false,
+  final_year_marksheet: false,
+  degree_certificate: false,
+  leaving_certificate: false,
+  experience_or_deputation_letter: false,
+  domicile_certificate: false,
+  gap_certificate: false,
+  caste_certificate: false,
+  caste_validity_certificate: false,
+  non_creamy_layer_certificate: false,
+  ssc_marksheet_certificate: false,
+  hsc_marksheet_certificate: false,
+},
+        admission_decision: 'pending',
+        principal_signature: {},
+      },
+    },
+  };
+};
+>>>>>>> fbb06e7 (Update student admission and backend features)

@@ -149,3 +149,93 @@ exports.assignCourseSchema = Joi.object({
   course_id: objectId.required(),
   batch_id: objectId.allow('', null).optional(),
 }).unknown(false);
+
+exports.directAdmissionSchema = Joi.object({
+  course_id: objectId.required(),
+
+  full_name: Joi.string().trim().min(2).max(150).required(),
+
+  dob: Joi.date().iso().less('now').required(),
+
+  phone: Joi.string()
+    .trim()
+    .pattern(/^[0-9+\-\s()]{7,15}$/)
+    .required(),
+
+  email: Joi.string().trim().email().max(200).allow('', null).optional(),
+
+  address: Joi.string().trim().min(1).required(),
+
+  qualification: Joi.string().trim().max(150).required(),
+
+  guardian_name: Joi.string().trim().max(150).allow('', null).optional(),
+
+  guardian_phone: Joi.string()
+    .trim()
+    .pattern(/^[0-9+\-\s()]{7,15}$/)
+    .allow('', null)
+    .optional(),
+
+  admission_form: Joi.object({
+    fathers_name: Joi.string().allow('', null).optional(),
+    mothers_name: Joi.string().allow('', null).optional(),
+    religion: Joi.string().allow('', null).optional(),
+    caste: Joi.string().allow('', null).optional(),
+    category: Joi.string().allow('', null).optional(),
+
+    aadhaar_number: Joi.string()
+      .pattern(/^[0-9]{12}$/)
+      .allow('', null)
+      .optional(),
+
+    postal_address: Joi.object({
+      address: Joi.string().allow('', null).optional(),
+      pin: Joi.string().allow('', null).optional(),
+    }).optional(),
+
+    permanent_address: Joi.object({
+      address: Joi.string().allow('', null).optional(),
+      pin: Joi.string().allow('', null).optional(),
+    }).optional(),
+
+    contact_details: Joi.object({
+      contact_no: Joi.string().allow('', null).optional(),
+      mobile_no: Joi.string().allow('', null).optional(),
+      home_mobile_no: Joi.string().allow('', null).optional(),
+    }).optional(),
+
+    academic_qualification: Joi.array().items(
+      Joi.object({
+        examination_passed: Joi.string().allow('', null).optional(),
+        school_college: Joi.string().allow('', null).optional(),
+        year_of_passing: Joi.number().integer().allow(null).optional(),
+        board_university: Joi.string().allow('', null).optional(),
+        seat_no: Joi.string().allow('', null).optional(),
+        marks_out_of: Joi.number().min(0).allow(null).optional(),
+        marks_obtained: Joi.number().min(0).allow(null).optional(),
+        percentage: Joi.number().min(0).max(100).allow(null).optional(),
+      }).unknown(false)
+    ).optional(),
+
+    physical_details: Joi.object({
+      blood_group: Joi.string().allow('', null).optional(),
+      chest: Joi.string().allow('', null).optional(),
+      height: Joi.string().allow('', null).optional(),
+      weight: Joi.string().allow('', null).optional(),
+      participation: Joi.object({
+        ncc: Joi.boolean().optional(),
+        nss: Joi.boolean().optional(),
+        scout_guide: Joi.boolean().optional(),
+      }).optional(),
+    }).optional(),
+
+    images: Joi.object().unknown(true).optional(),
+
+    declaration: Joi.object({
+      place: Joi.string().allow('', null).optional(),
+      date: Joi.date().iso().allow(null).optional(),
+    }).optional(),
+
+    office_use: Joi.object().unknown(true).optional(),
+  }).unknown(false).optional(),
+}).unknown(false);

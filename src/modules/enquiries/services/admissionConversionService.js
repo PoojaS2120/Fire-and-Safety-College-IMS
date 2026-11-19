@@ -1,184 +1,10 @@
-// const mongoose = require('mongoose');
-// const crypto = require('crypto');
-
-// const Enquiry = require('../models/Enquiry');
-// const User = require('../../auth/models/User');
-// const Student = require('../../students/models/Student');
-// const StudentFee = require('../../fees/models/StudentFee');
-// const StudentStageHistory = require('../../students/models/StudentStageHistory');
-// const StudentIdCounter = require('../../students/models/StudentIdCounter');
-// const Course = require('../../courses/models/Course');
-// const FeeComponent = require('../../courses/models/FeeComponent');
-
-// function createError(statusCode, message) {
-//   const error = new Error(message);
-//   error.statusCode = statusCode;
-//   return error;
-// }
-
-// async function generateStudentId(year) {
-//   const key = `student_id_${year}`;
-//   const counter = await StudentIdCounter.findByIdAndUpdate(
-//     key,
-//     { $inc: { sequence: 1 } },
-//     { new: true, upsert: true, setDefaultsOnInsert: true }
-//   );
-//   return `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
-// }
-
-// exports.convertEnquiryToAdmission = async (enquiryId, admissionData, staffUserId) => {
-//   if (!mongoose.isValidObjectId(enquiryId)) throw createError(400, 'Invalid enquiry ID.');
-//   if (!mongoose.isValidObjectId(staffUserId)) throw createError(400, 'Invalid staff user ID.');
-
-//   const enquiry = await Enquiry.findById(enquiryId);
-//   if (!enquiry) throw createError(404, 'Enquiry not found.');
-//   if (enquiry.status === 'converted' || enquiry.converted_student_id) {
-//     throw createError(409, 'This enquiry has already been converted.');
-//   }
-//   if (enquiry.status === 'closed') throw createError(400, 'Closed enquiries cannot be converted.');
-//   if (!enquiry.course_interest_id) {
-//     throw createError(400, 'A course must be assigned to the enquiry before conversion.');
-//   }
-
-//   const course = await Course.findById(enquiry.course_interest_id);
-//   if (!course || course.status !== 'active') {
-//     throw createError(400, 'Selected course is not available.');
-//   }
-
-//   const feeComponents = await FeeComponent.find({ course_id: course._id, status: 'active' });
-//   if (feeComponents.length === 0) {
-//     throw createError(400, 'No active fee components are configured for this course.');
-//   }
-
-//   // Use phone override if provided, else use enquiry's phone
-//   const phone = (admissionData.phone || enquiry.phone).trim();
-//   const fullName = (admissionData.full_name || enquiry.name).trim();
-
-//   // Synthetic login email (matches studentService pattern)
-//   const syntheticEmail = `${phone}@ims.com`;
-//   // Display email (real email stored on student record)
-//   const displayEmail = (admissionData.email || enquiry.email || '').trim().toLowerCase() || null;
-
-//   const existingUser = await User.findOne({ email: syntheticEmail });
-//   if (existingUser) {
-//     throw createError(409, 'A student with this phone number already exists.');
-//   }
-
-//   const temporaryPassword = crypto.randomBytes(12).toString('base64url');
-
-//   // Step 1: Create user
-//   const user = await User.create({
-//     name: fullName,
-//     email: syntheticEmail,
-//     phone,
-//     password: temporaryPassword,
-//     role: 'student',
-//     is_active: true,
-//     must_change_password: true,
-//   });
-
-//   let student;
-//   let studentFeeRecords = [];
-
-//   try {
-//     // Step 2: Student ID
-//     const year = new Date().getFullYear();
-//     const studentId = await generateStudentId(year);
-
-//     // Step 3: Student record
-//     student = await Student.create({
-//       student_id: studentId,
-//       user_id: user._id,
-//       full_name: fullName,
-//       dob: admissionData.dob,
-//       gender: admissionData.gender || null,
-//       phone,
-//       email: displayEmail,
-//       address: admissionData.address,
-//       guardian_name: admissionData.guardian_name || null,
-//       guardian_phone: admissionData.guardian_phone || null,
-//       qualification: admissionData.qualification,
-//       course_id: course._id,
-//       batch_id: null,
-//       lifecycle_stage: 'admission',
-//       stage_status: 'pending',
-//       status: 'active',
-//       admitted_on: new Date(),
-//       created_by: staffUserId,
-//     });
-
-//     // Step 4: Fee records
-//     studentFeeRecords = feeComponents.map((component) => ({
-//       student_id: student._id,
-//       course_id: course._id,
-//       fee_component_id: component._id,
-//       fee_name: component.name,
-//       amount_due: component.amount,
-//       amount_paid: 0,
-//       due_date: null,
-//       required_for_exam: component.required_for_exam,
-//       status: 'pending',
-//     }));
-//     await StudentFee.insertMany(studentFeeRecords);
-
-//     // Step 5: Stage history
-//     await StudentStageHistory.create({
-//       student_id: student._id,
-//       from_stage: null,
-//       to_stage: 'admission',
-//       stage_status: 'pending',
-//       changed_by: staffUserId,
-//       changed_at: new Date(),
-//       remarks: 'Initial admission through enquiry conversion.',
-//     });
-
-//     // Step 6: Mark enquiry converted
-//     enquiry.status = 'converted';
-//     enquiry.converted_student_id = student._id;
-//     await enquiry.save();
-//   } catch (err) {
-//     // Manual rollback: delete everything if any step fails
-//     if (student?._id) {
-//       await Student.findByIdAndDelete(student._id).catch(() => {});
-//       await StudentFee.deleteMany({ student_id: student._id }).catch(() => {});
-//       await StudentStageHistory.deleteMany({ student_id: student._id }).catch(() => {});
-//     }
-//     await User.findByIdAndDelete(user._id).catch(() => {});
-//     throw err;
-//   }
-
-//   return {
-//     enquiry: {
-//       id: enquiry._id,
-//       status: enquiry.status,
-//       converted_student_id: student._id,
-//     },
-//     student: {
-//       id: student._id,
-//       student_id: student.student_id,
-//       full_name: student.full_name,
-//       email: student.email,
-//       course_id: student.course_id,
-//       lifecycle_stage: student.lifecycle_stage,
-//     },
-//     account: {
-//       email: syntheticEmail,
-//       phone,
-//       temporary_password: temporaryPassword,
-//       must_change_password: true,
-//     },
-//     fees_generated: studentFeeRecords.length,
-//   };
-// };
-
-
 
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
 const Enquiry = require('../models/Enquiry');
 const User = require('../../auth/models/User');
-const Role = require('../../rbac/models/Role'); // 🚨 Import Role
+const Role = require('../../rbac/models/Role');
 const Student = require('../../students/models/Student');
 const StudentFee = require('../../fees/models/StudentFee');
 const StudentStageHistory = require('../../students/models/StudentStageHistory');
@@ -192,96 +18,419 @@ function createError(statusCode, message) {
   return error;
 }
 
+function clean(value, fallback = '') {
+  if (value === undefined || value === null) return fallback;
+  return typeof value === 'string' ? value.trim() : value;
+}
+
+function pick(...values) {
+  return values.find(
+    (value) => value !== undefined && value !== null && value !== ''
+  );
+}
+
+function buildAdmissionForm(data, enquiry) {
+  const form = data.admission_form || {};
+
+  const postal = form.postal_address || {};
+  const permanent = form.permanent_address || {};
+  const contact = form.contact_details || {};
+  const physical = form.physical_details || {};
+  const participation = physical.participation || {};
+  const declaration = form.declaration || {};
+  const office = form.office_use || {};
+  const documents = office.required_documents || {};
+
+  return {
+    fathers_name: clean(
+      pick(form.fathers_name, data.fathers_name, enquiry.fathers_name)
+    ),
+
+    mothers_name: clean(
+      pick(form.mothers_name, data.mothers_name, enquiry.mothers_name)
+    ),
+
+    religion: clean(pick(form.religion, data.religion, enquiry.religion)),
+    caste: clean(pick(form.caste, data.caste, enquiry.caste)),
+    category: clean(pick(form.category, data.category, enquiry.category)),
+
+    postal_address: {
+      address: clean(
+        pick(
+          postal.address,
+          data.postal_address?.address,
+          enquiry.postal_address?.address
+        )
+      ),
+      pin: clean(
+        pick(
+          postal.pin,
+          data.postal_address?.pin,
+          enquiry.postal_address?.pin
+        )
+      ),
+    },
+
+    permanent_address: {
+      address: clean(
+        pick(
+          permanent.address,
+          data.permanent_address?.address,
+          enquiry.permanent_address?.address
+        )
+      ),
+      pin: clean(
+        pick(
+          permanent.pin,
+          data.permanent_address?.pin,
+          enquiry.permanent_address?.pin
+        )
+      ),
+    },
+
+    contact_details: {
+      contact_no: clean(
+        pick(
+          contact.contact_no,
+          data.contact_no,
+          enquiry.contact_no,
+          enquiry.phone_tel
+        )
+      ),
+
+      mobile_no: clean(
+        pick(
+          contact.mobile_no,
+          data.mobile_no,
+          enquiry.mobile,
+          enquiry.phone
+        )
+      ),
+
+      home_mobile_no: clean(
+        pick(
+          contact.home_mobile_no,
+          data.home_mobile_no,
+          enquiry.home_mobile_no
+        )
+      ),
+    },
+
+    aadhaar_number: clean(form.aadhaar_number, null),
+
+    academic_qualification:
+      form.academic_qualification ||
+      data.academic_qualification ||
+      enquiry.academic_qualification ||
+      [],
+
+    physical_details: {
+      blood_group: clean(pick(physical.blood_group)),
+      chest: clean(pick(physical.chest, enquiry.chest_cm)),
+      height: clean(pick(physical.height, enquiry.height_cm)),
+      weight: clean(pick(physical.weight, enquiry.weight_kg)),
+
+      participation: {
+        ncc: Boolean(participation.ncc),
+        nss: Boolean(participation.nss),
+        scout_guide: Boolean(participation.scout_guide),
+      },
+    },
+
+    images: {
+      student_photo: form.images?.student_photo || {},
+      student_signature: form.images?.student_signature || {},
+      parent_signature: form.images?.parent_signature || {},
+    },
+
+    declaration: {
+      place: clean(declaration.place),
+      date: declaration.date || null,
+    },
+
+    office_use: {
+      required_documents: {
+        passport_photographs: Boolean(documents.passport_photographs),
+        final_year_marksheet: Boolean(documents.final_year_marksheet),
+        degree_certificate: Boolean(documents.degree_certificate),
+        leaving_certificate: Boolean(documents.leaving_certificate),
+        experience_or_deputation_letter: Boolean(
+          documents.experience_or_deputation_letter
+        ),
+        domicile_certificate: Boolean(documents.domicile_certificate),
+        gap_certificate: Boolean(documents.gap_certificate),
+        caste_certificate: Boolean(documents.caste_certificate),
+        caste_validity_certificate: Boolean(
+          documents.caste_validity_certificate
+        ),
+        non_creamy_layer_certificate: Boolean(
+          documents.non_creamy_layer_certificate
+        ),
+        ssc_marksheet_certificate: Boolean(
+          documents.ssc_marksheet_certificate
+        ),
+        hsc_marksheet_certificate: Boolean(
+          documents.hsc_marksheet_certificate
+        ),
+      },
+
+      admission_decision: office.admission_decision || 'pending',
+      principal_signature: office.principal_signature || {},
+    },
+  };
+}
+
+
 async function generateStudentId(year) {
   const key = `student_id_${year}`;
+
+  // Atomically increment the sequence counter
   const counter = await StudentIdCounter.findByIdAndUpdate(
     key,
     { $inc: { sequence: 1 } },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    {
+      returnDocument: 'after',
+      upsert: true,
+      setDefaultsOnInsert: true,
+    }
   );
-  return `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
+
+  const studentId = `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
+
+  // Safety check: avoid duplicate IDs if the counter is behind existing records
+  const existingStudent = await Student.findOne({
+    student_id: studentId,
+  }).select('_id');
+
+  if (existingStudent) {
+    const latestStudent = await Student.findOne({
+      student_id: new RegExp(`^FSC-${year}-`),
+    })
+      .sort({ student_id: -1 })
+      .select('student_id');
+
+    const match = latestStudent?.student_id?.match(/^FSC-\d+-(\d+)$/);
+    const latestSequence = match ? Number(match[1]) : 0;
+
+    await StudentIdCounter.findByIdAndUpdate(
+      key,
+      { $max: { sequence: latestSequence } },
+      { returnDocument: 'after' }
+    );
+
+    return generateStudentId(year);
+  }
+
+  return studentId;
 }
 
-exports.convertEnquiryToAdmission = async (enquiryId, admissionData, staffUserId) => {
-  if (!mongoose.isValidObjectId(enquiryId)) throw createError(400, 'Invalid enquiry ID.');
-  if (!mongoose.isValidObjectId(staffUserId)) throw createError(400, 'Invalid staff user ID.');
 
-  // 1. Find and validate enquiry
+exports.convertEnquiryToAdmission = async (
+  enquiryId,
+  admissionData = {},
+  staffUserId
+) => {
+  if (!mongoose.isValidObjectId(enquiryId)) {
+    throw createError(400, 'Invalid enquiry ID.');
+  }
+
+  if (!mongoose.isValidObjectId(staffUserId)) {
+    throw createError(400, 'Invalid staff user ID.');
+  }
+
+  if (
+    !admissionData ||
+    typeof admissionData !== 'object' ||
+    Array.isArray(admissionData)
+  ) {
+    throw createError(400, 'Invalid admission data.');
+  }
+
   const enquiry = await Enquiry.findById(enquiryId);
-  if (!enquiry) throw createError(404, 'Enquiry not found.');
+
+  if (!enquiry) {
+    throw createError(404, 'Enquiry not found.');
+  }
+
   if (enquiry.status === 'converted' || enquiry.converted_student_id) {
     throw createError(409, 'This enquiry has already been converted.');
   }
-  if (enquiry.status === 'closed') throw createError(400, 'Closed enquiries cannot be converted.');
-  if (!enquiry.course_interest_id) {
-    throw createError(400, 'A course must be assigned to the enquiry before conversion.');
+
+  if (enquiry.status === 'closed') {
+    throw createError(400, 'Closed enquiries cannot be converted.');
   }
 
-  // 2. Validate course
-  const course = await Course.findById(enquiry.course_interest_id);
+  // Use the course selected in the admission request.
+  // Fallback to the enquiry's original course if not provided.
+  const selectedCourseId =
+    admissionData.course_id || enquiry.course_interest_id;
+
+  if (!selectedCourseId) {
+    throw createError(400, 'Please select a course for admission.');
+  }
+
+  if (!mongoose.isValidObjectId(selectedCourseId)) {
+    throw createError(400, 'Invalid course ID.');
+  }
+
+  const course = await Course.findById(selectedCourseId);
+
   if (!course || course.status !== 'active') {
     throw createError(400, 'Selected course is not available.');
   }
 
-  // 3. Validate fee components
-  const feeComponents = await FeeComponent.find({ course_id: course._id, status: 'active' });
-  if (feeComponents.length === 0) {
-    throw createError(400, 'No active fee components are configured for this course.');
+  // Fetch active fee components for the selected course.
+  const feeComponents = await FeeComponent.find({
+    course_id: course._id,
+    status: 'active',
+  });
+
+  if (!feeComponents.length) {
+    throw createError(
+      400,
+      'No active fee components are configured for this course.'
+    );
   }
 
-  // 4. Get the Student Role ObjectId
   const studentRole = await Role.findOne({ name: 'student' });
+
   if (!studentRole) {
     throw createError(500, 'System error: Student role not found in database.');
   }
 
-  // 5. Resolve details
-  const phone = (admissionData.phone || enquiry.phone).trim();
-  const fullName = (admissionData.full_name || enquiry.name).trim();
-  const syntheticEmail = `${phone}@ims.com`;
-  const displayEmail = (admissionData.email || enquiry.email || '').trim().toLowerCase() || null;
+  const phone = clean(
+    pick(
+      admissionData.phone,
+      admissionData.mobile_no,
+      admissionData.admission_form?.contact_details?.mobile_no,
+      enquiry.mobile,
+      enquiry.phone,
+      enquiry.phone_tel
+    )
+  );
 
-  const existingUser = await User.findOne({ email: syntheticEmail });
+  const fullName = clean(
+    pick(admissionData.full_name, enquiry.name)
+  );
+
+  const dob = pick(
+    admissionData.dob,
+    enquiry.date_of_birth,
+    enquiry.dob
+  );
+
+  const admissionForm = buildAdmissionForm(admissionData, enquiry);
+
+  const postalAddress = admissionForm.postal_address.address;
+  const permanentAddress = admissionForm.permanent_address.address;
+
+  const address = clean(
+    pick(
+      admissionData.address,
+      postalAddress,
+      permanentAddress,
+      enquiry.address
+    )
+  );
+
+  const qualification = clean(
+    pick(
+      admissionData.qualification,
+      admissionForm.academic_qualification[0]?.examination_passed,
+      enquiry.qualification
+    )
+  );
+
+  if (!fullName) {
+    throw createError(400, 'Student name is required.');
+  }
+
+  if (!phone) {
+    throw createError(400, 'Student mobile number is required.');
+  }
+
+  if (!dob) {
+    throw createError(400, 'Date of birth is required.');
+  }
+
+  if (!address) {
+    throw createError(400, 'Student address is required.');
+  }
+
+  if (!qualification) {
+    throw createError(400, 'Student qualification is required.');
+  }
+
+  if (
+    admissionForm.aadhaar_number &&
+    !/^[0-9]{12}$/.test(admissionForm.aadhaar_number)
+  ) {
+    throw createError(400, 'Aadhaar number must contain exactly 12 digits.');
+  }
+
+  const syntheticEmail = `${phone}@ims.com`;
+
+  const displayEmail = clean(
+    pick(admissionData.email, enquiry.email),
+    ''
+  ).toLowerCase() || null;
+
+  const existingUser = await User.findOne({
+    email: syntheticEmail,
+  });
+
   if (existingUser) {
     throw createError(409, 'A student with this phone number already exists.');
   }
 
   const temporaryPassword = crypto.randomBytes(12).toString('base64url');
 
-  // 6. Create User
-  const user = await User.create({
-    name: fullName,
-    email: syntheticEmail,
-    phone,
-    password: temporaryPassword,
-    role: studentRole._id, // 🚨 Use the ObjectId here
-    is_active: true,
-    must_change_password: true,
-  });
-
+  let user;
   let student;
   let studentFeeRecords = [];
 
   try {
-    // 7. Generate Student ID
+    // 1. Create student login account
+    user = await User.create({
+      name: fullName,
+      email: syntheticEmail,
+      phone,
+      password: temporaryPassword,
+      role: studentRole._id,
+      is_active: true,
+      must_change_password: true,
+    });
+
+    // 2. Generate student ID
     const year = new Date().getFullYear();
     const studentId = await generateStudentId(year);
 
-    // 8. Create Student Profile
+    // 3. Create complete student profile
     student = await Student.create({
       student_id: studentId,
       user_id: user._id,
       full_name: fullName,
-      dob: admissionData.dob,
-      gender: admissionData.gender || null,
+      dob,
+    //  gender: admissionData.gender || null,
       phone,
       email: displayEmail,
-      address: admissionData.address,
-      guardian_name: admissionData.guardian_name || null,
-      guardian_phone: admissionData.guardian_phone || null,
-      qualification: admissionData.qualification,
+      address,
+
+      guardian_name:
+        admissionForm.fathers_name ||
+        admissionData.guardian_name ||
+        null,
+
+      guardian_phone:
+        admissionData.guardian_phone ||
+        admissionForm.contact_details.home_mobile_no ||
+        null,
+
+      qualification,
       course_id: course._id,
       batch_id: null,
+      source_enquiry_id: enquiry._id,
+      admission_form: admissionForm,
       lifecycle_stage: 'admission',
       stage_status: 'pending',
       status: 'active',
@@ -289,7 +438,7 @@ exports.convertEnquiryToAdmission = async (enquiryId, admissionData, staffUserId
       created_by: staffUserId,
     });
 
-    // 9. Generate Fee Records
+    // 4. Generate fee records
     studentFeeRecords = feeComponents.map((component) => ({
       student_id: student._id,
       course_id: course._id,
@@ -301,9 +450,10 @@ exports.convertEnquiryToAdmission = async (enquiryId, admissionData, staffUserId
       required_for_exam: component.required_for_exam,
       status: 'pending',
     }));
+
     await StudentFee.insertMany(studentFeeRecords);
 
-    // 10. Create Stage History
+    // 5. Create stage history
     await StudentStageHistory.create({
       student_id: student._id,
       from_stage: null,
@@ -314,19 +464,29 @@ exports.convertEnquiryToAdmission = async (enquiryId, admissionData, staffUserId
       remarks: 'Initial admission through enquiry conversion.',
     });
 
-    // 11. Mark Enquiry as Converted
+    // 6. Mark enquiry converted only after successful creation
     enquiry.status = 'converted';
     enquiry.converted_student_id = student._id;
     await enquiry.save();
-    
+
   } catch (err) {
-    // 🚨 MANUAL ROLLBACK (Replaces withTransaction)
+    // Rollback records created during conversion
     if (student?._id) {
+      await StudentFee.deleteMany({
+        student_id: student._id,
+      }).catch(() => {});
+
+      await StudentStageHistory.deleteMany({
+        student_id: student._id,
+      }).catch(() => {});
+
       await Student.findByIdAndDelete(student._id).catch(() => {});
-      await StudentFee.deleteMany({ student_id: student._id }).catch(() => {});
-      await StudentStageHistory.deleteMany({ student_id: student._id }).catch(() => {});
     }
-    await User.findByIdAndDelete(user._id).catch(() => {});
+
+    if (user?._id) {
+      await User.findByIdAndDelete(user._id).catch(() => {});
+    }
+
     throw err;
   }
 
@@ -336,6 +496,7 @@ exports.convertEnquiryToAdmission = async (enquiryId, admissionData, staffUserId
       status: enquiry.status,
       converted_student_id: student._id,
     },
+
     student: {
       id: student._id,
       student_id: student.student_id,
@@ -344,12 +505,14 @@ exports.convertEnquiryToAdmission = async (enquiryId, admissionData, staffUserId
       course_id: student.course_id,
       lifecycle_stage: student.lifecycle_stage,
     },
+
     account: {
       email: syntheticEmail,
       phone,
       temporary_password: temporaryPassword,
       must_change_password: true,
     },
+
     fees_generated: studentFeeRecords.length,
   };
 };

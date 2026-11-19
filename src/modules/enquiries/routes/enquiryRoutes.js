@@ -17,6 +17,8 @@ router.get('/summary', enquiryController.getEnquirySummary);
 router.put('/:id/status', enquiryController.updateEnquiryStatus);
 router.put('/:id', enquiryController.updateEnquiry);
 
+router.get('/:id/admission-prefill', enquiryController.getAdmissionPrefill);
+
 router.post('/:id/convert', enquiryController.convertEnquiry);
 
 // NEW: Delete enquiry
