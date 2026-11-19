@@ -1,3 +1,4 @@
+
 const Joi = require('joi');
 
 const phonePattern = /^[0-9+\-\s()]{7,15}$/;
@@ -163,10 +164,19 @@ const enquiryFields = {
     .max(2000)
     .allow('', null),
 
-  how_did_you_know: Joi.array()
-    .items(Joi.string().valid(...referralOptions))
-    .unique()
-    .max(6),
+  // Supports both single and multiple referral selections
+  how_did_you_know: Joi.alternatives()
+    .try(
+      Joi.array()
+        .items(Joi.string().valid(...referralOptions))
+        .unique()
+        .max(6),
+
+      Joi.string().valid(...referralOptions)
+    )
+    .custom((value) => {
+      return Array.isArray(value) ? value : [value];
+    }),
 
   other: Joi.string()
     .trim()
