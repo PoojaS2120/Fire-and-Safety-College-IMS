@@ -380,11 +380,7 @@ exports.getAdmissionPrefill = async (id) => {
       // These details are collected during admission.
       aadhaar_number: '',
 
-      images: {
-        student_photo: {},
-        student_signature: {},
-        parent_signature: {},
-      },
+      
 
       declaration: {
         place: '',
@@ -407,7 +403,7 @@ exports.getAdmissionPrefill = async (id) => {
   hsc_marksheet_certificate: false,
 },
         admission_decision: 'pending',
-        principal_signature: {},
+        
       },
     },
   };
