@@ -382,9 +382,9 @@
 // };
 
 
-
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+
 const Student = require('../models/Student');
 const StudentStageHistory = require('../models/StudentStageHistory');
 const StudentIdCounter = require('../models/StudentIdCounter');
@@ -394,13 +394,11 @@ const Batch = require('../../courses/models/Batch');
 const FacultyAssignment = require('../../faculty/models/FacultyAssignment');
 const BookIssue = require('../../library/models/BookIssue');
 const TcLc = require('../../tclc/models/TcLc');
-<<<<<<< HEAD
 
-=======
 const Role = require('../../rbac/models/Role');
 const StudentFee = require('../../fees/models/StudentFee');
 const FeeComponent = require('../../courses/models/FeeComponent');
->>>>>>> fbb06e7 (Update student admission and backend features)
+
 function createError(statusCode, message) {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -408,7 +406,9 @@ function createError(statusCode, message) {
 }
 
 function validateObjectId(id, fieldName = 'student ID') {
-  if (!mongoose.isValidObjectId(id)) throw createError(400, `Invalid ${fieldName}.`);
+  if (!mongoose.isValidObjectId(id)) {
+    throw createError(400, `Invalid ${fieldName}.`);
+  }
 }
 
 async function validateAssignments(courseId, batchId) {
@@ -417,19 +417,29 @@ async function validateAssignments(courseId, batchId) {
 
   const course = await Course.findById(courseId);
   if (!course) throw createError(404, 'Course not found.');
-  if (course.status !== 'active') throw createError(400, 'Selected course is inactive.');
+  if (course.status !== 'active') {
+    throw createError(400, 'Selected course is inactive.');
+  }
 
   if (batchId) {
     validateObjectId(batchId, 'batch ID');
+
     const batch = await Batch.findById(batchId);
     if (!batch) throw createError(404, 'Batch not found.');
-    if (batch.status !== 'active') throw createError(400, 'Selected batch is closed.');
+    if (batch.status !== 'active') {
+      throw createError(400, 'Selected batch is closed.');
+    }
+
     if (batch.course_id.toString() !== courseId.toString()) {
-      throw createError(400, 'Selected batch does not belong to the selected course.');
+      throw createError(
+        400,
+        'Selected batch does not belong to the selected course.'
+      );
     }
   }
 }
 
+// Check whether all library books issued to a student have been returned.
 async function validateBooksReturned(studentId) {
   const pendingIssues = await BookIssue.find({
     student: studentId,
@@ -456,13 +466,15 @@ async function validateBooksReturned(studentId) {
   }
 }
 
-<<<<<<< HEAD
+// ================= STUDENT ID GENERATION =================
+// Shared by regular student creation and direct admission.
 async function generateStudentId() {
   const year = new Date().getFullYear();
   const key = `FSC-${year}`;
 
+  // Find the latest student ID already present in the database.
   const lastStudent = await Student.findOne({
-    student_id: new RegExp(`^FSC-${year}-\\d+$`)
+    student_id: new RegExp(`^FSC-${year}-\\d+$`),
   })
     .sort({ student_id: -1 })
     .select('student_id')
@@ -472,28 +484,14 @@ async function generateStudentId() {
     ? parseInt(lastStudent.student_id.split('-').pop(), 10)
     : 0;
 
+  // Synchronize the counter with existing student records.
   await StudentIdCounter.updateOne(
     { _id: key },
     { $max: { sequence: lastSequence } },
     { upsert: true }
   );
 
-=======
-// async function generateStudentId() {
-//   const year = new Date().getFullYear();
-//   const key = `FSC-${year}`;
-//   const counter = await StudentIdCounter.findByIdAndUpdate(
-//     key,
-//     { $inc: { sequence: 1 } },
-//     { new: true, upsert: true, setDefaultsOnInsert: true }
-//   );
-//   return `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
-// }
-
-async function generateDirectAdmissionStudentId(year) {
-  const key = `student_id_${year}`;
-
->>>>>>> fbb06e7 (Update student admission and backend features)
+  // Atomically generate the next student ID.
   const counter = await StudentIdCounter.findByIdAndUpdate(
     key,
     { $inc: { sequence: 1 } },
@@ -506,40 +504,40 @@ async function generateDirectAdmissionStudentId(year) {
 
   const studentId = `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
 
-<<<<<<< HEAD
-=======
-  const existingStudent = await Student.findOne({ student_id: studentId }).select('_id');
+  // Protect against an ID that already exists.
+  const existingStudent = await Student.findOne({
+    student_id: studentId,
+  }).select('_id');
 
   if (existingStudent) {
-    const latestStudent = await Student.findOne({
-      student_id: new RegExp(`^FSC-${year}-`),
-    })
-      .sort({ student_id: -1 })
-      .select('student_id');
-
-    const match = latestStudent?.student_id?.match(/^FSC-\d+-(\d+)$/);
-    const latestSequence = match ? Number(match[1]) : 0;
-
-    await StudentIdCounter.findByIdAndUpdate(
-      key,
-      { $max: { sequence: latestSequence } },
-      { returnDocument: 'after' }
+    await StudentIdCounter.updateOne(
+      { _id: key },
+      { $max: { sequence: counter.sequence } },
+      { upsert: true }
     );
 
-    return generateDirectAdmissionStudentId(year);
+    return generateStudentId();
   }
 
   return studentId;
 }
 
->>>>>>> fbb06e7 (Update student admission and backend features)
 // ================= CREATE =================
 exports.createStudent = async (data, adminId) => {
   validateObjectId(adminId, 'creator user ID');
 
   const syntheticEmail = `${data.phone}@ims.com`;
-  const existingUser = await User.findOne({ email: syntheticEmail });
-  if (existingUser) throw createError(400, 'A student with this phone number already exists.');
+
+  const existingUser = await User.findOne({
+    email: syntheticEmail,
+  });
+
+  if (existingUser) {
+    throw createError(
+      400,
+      'A student with this phone number already exists.'
+    );
+  }
 
   await validateAssignments(data.course_id, data.batch_id);
 
@@ -551,10 +549,12 @@ exports.createStudent = async (data, adminId) => {
     role: 'student',
     must_change_password: true,
   });
+
   await newUser.save();
 
   try {
     const studentId = await generateStudentId();
+
     const student = new Student({
       ...data,
       student_id: studentId,
@@ -563,7 +563,9 @@ exports.createStudent = async (data, adminId) => {
       user_id: newUser._id,
       created_by: adminId,
     });
+
     await student.save();
+
     return student;
   } catch (err) {
     await User.findByIdAndDelete(newUser._id);
@@ -571,20 +573,29 @@ exports.createStudent = async (data, adminId) => {
   }
 };
 
-// ================= LIST (UPDATED) =================
+// ================= LIST =================
 exports.getStudents = async (query, user) => {
   const {
-    page = 1, limit = 10, status, lifecycle_stage, stage_status, courseId, batchId, batch_id
+    page = 1,
+    limit = 10,
+    status,
+    lifecycle_stage,
+    stage_status,
+    courseId,
+    batchId,
+    batch_id,
   } = query;
+
   const searchTerm = query.q || query.search;
 
   const filter = {};
 
-  // Exclude students whose TC has been approved
+  // Exclude students whose TC has been approved.
   const tcApprovedStudentIds = await TcLc.distinct('student_id', {
     type: 'TC',
     status: 'approved',
   });
+
   filter._id = { $nin: tcApprovedStudentIds };
 
   if (status) filter.status = status;
@@ -592,15 +603,25 @@ exports.getStudents = async (query, user) => {
   if (stage_status) filter.stage_status = stage_status;
   if (courseId) filter.course_id = courseId;
 
+  // Handle both batchId and batch_id.
   const actualBatchId = batchId || batch_id;
-  if (actualBatchId) filter.batch_id = actualBatchId;
 
-  // 🚨 FACULTY SCOPE: Only students in their assigned batches
+  if (actualBatchId) {
+    filter.batch_id = actualBatchId;
+  }
+
+  // Faculty can only see students in their assigned batches.
   if (user && user.role === 'faculty') {
-    const assignments = await FacultyAssignment.find({ faculty_id: user.id }).select('batch_id');
-    const allowedBatches = assignments.map(a => a.batch_id);
+    const assignments = await FacultyAssignment.find({
+      faculty_id: user.id,
+    }).select('batch_id');
 
-    if (actualBatchId && !allowedBatches.some(id => String(id) === String(actualBatchId))) {
+    const allowedBatches = assignments.map((a) => a.batch_id);
+
+    if (
+      actualBatchId &&
+      !allowedBatches.some((id) => String(id) === String(actualBatchId))
+    ) {
       throw createError(403, 'You are not assigned to this batch.');
     }
 
@@ -611,6 +632,7 @@ exports.getStudents = async (query, user) => {
 
   if (searchTerm) {
     const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
     filter.$or = [
       { student_id: { $regex: escaped, $options: 'i' } },
       { full_name: { $regex: escaped, $options: 'i' } },
@@ -620,6 +642,7 @@ exports.getStudents = async (query, user) => {
   }
 
   const skip = (page - 1) * limit;
+
   const [students, total] = await Promise.all([
     Student.find(filter)
       .populate('user_id', 'name email phone is_active')
@@ -629,31 +652,45 @@ exports.getStudents = async (query, user) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
+
     Student.countDocuments(filter),
   ]);
 
-  return { students, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  return {
+    students,
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
 // ================= GET BY ID =================
 exports.getStudentById = async (id) => {
   validateObjectId(id);
+
   const student = await Student.findById(id)
     .populate('user_id', 'name email phone is_active')
     .populate('course_id', 'name duration status')
     .populate('batch_id', 'name start_date end_date status')
     .populate('created_by', 'name email');
+
   if (!student) throw createError(404, 'Student not found.');
+
   return student;
 };
 
 // ================= SUMMARY =================
 exports.getStudentSummary = async (id) => {
   validateObjectId(id);
+
   const student = await Student.findById(id)
     .populate('user_id', 'name email phone is_active')
     .populate('course_id', 'name duration')
     .populate('batch_id', 'name');
+
   if (!student) throw createError(404, 'Student not found.');
 
   return {
@@ -681,9 +718,14 @@ exports.updateStudent = async (id, data) => {
   validateObjectId(id);
 
   const existing = await Student.findById(id);
+
   if (!existing) throw createError(404, 'Student not found.');
 
-  if (['left', 'completed'].includes(data.status) && data.status !== existing.status) {
+  // Prevent bypassing library return validation through profile update.
+  if (
+    ['left', 'completed'].includes(data.status) &&
+    data.status !== existing.status
+  ) {
     await validateBooksReturned(id);
   }
 
@@ -720,27 +762,34 @@ exports.updateStudent = async (id, data) => {
 // ================= ASSIGN COURSE & BATCH =================
 exports.assignCourseAndBatch = async (id, courseId, batchId) => {
   validateObjectId(id);
+
   await validateAssignments(courseId, batchId);
 
   const student = await Student.findByIdAndUpdate(
     id,
-    { course_id: courseId, batch_id: batchId || null },
+    {
+      course_id: courseId,
+      batch_id: batchId || null,
+    },
     { returnDocument: 'after', runValidators: true }
   )
     .populate('course_id', 'name duration')
     .populate('batch_id', 'name start_date end_date');
 
   if (!student) throw createError(404, 'Student not found.');
+
   return student;
 };
 
-// ================= UPDATE STATUS (blocked replaces deactive) =================
+// ================= UPDATE STATUS =================
 exports.updateStudentStatus = async (id, status) => {
   validateObjectId(id);
 
   const student = await Student.findById(id);
+
   if (!student) throw createError(404, 'Student not found.');
 
+  // Check pending books before changing status.
   if (
     ['left', 'completed'].includes(status) &&
     status !== student.status
@@ -748,6 +797,7 @@ exports.updateStudentStatus = async (id, status) => {
     await validateBooksReturned(id);
   }
 
+  // Update linked user login status.
   const isUserActive = status === 'active';
 
   if (student.user_id) {
@@ -758,6 +808,7 @@ exports.updateStudentStatus = async (id, status) => {
     );
   }
 
+  // Update student status.
   student.status = status;
   await student.save();
 
@@ -770,11 +821,14 @@ exports.updateStudentStage = async (id, data, userId) => {
   validateObjectId(userId, 'user ID');
 
   const student = await Student.findById(id);
+
   if (!student) throw createError(404, 'Student not found.');
 
   const previousStage = student.lifecycle_stage;
+
   student.lifecycle_stage = data.lifecycle_stage;
   student.stage_status = data.stage_status;
+
   await student.save();
 
   await StudentStageHistory.create({
@@ -793,7 +847,9 @@ exports.updateStudentStage = async (id, data, userId) => {
 // ================= STAGE HISTORY =================
 exports.getStudentStageHistory = async (id) => {
   validateObjectId(id);
+
   const student = await Student.findById(id).select('_id');
+
   if (!student) throw createError(404, 'Student not found.');
 
   return StudentStageHistory.find({ student_id: id })
@@ -834,16 +890,22 @@ exports.createDirectAdmission = async (data, staffUserId) => {
   const studentRole = await Role.findOne({ name: 'student' });
 
   if (!studentRole) {
-    throw createError(500, 'System error: Student role not found in database.');
+    throw createError(
+      500,
+      'System error: Student role not found in database.'
+    );
   }
 
   const form = data.admission_form || {};
 
   const fullName = String(data.full_name || '').trim();
+
   const phone = String(
     data.phone || form.contact_details?.mobile_no || ''
   ).trim();
+
   const dob = data.dob;
+
   const address = String(
     data.address ||
     form.postal_address?.address ||
@@ -863,22 +925,32 @@ exports.createDirectAdmission = async (data, staffUserId) => {
   if (!phone) throw createError(400, 'Student mobile number is required.');
   if (!dob) throw createError(400, 'Date of birth is required.');
   if (!address) throw createError(400, 'Student address is required.');
-  if (!qualification) throw createError(400, 'Student qualification is required.');
+  if (!qualification) {
+    throw createError(400, 'Student qualification is required.');
+  }
 
   if (new Date(dob) >= new Date()) {
     throw createError(400, 'Date of birth must be in the past.');
   }
 
   if (aadhaar && !/^[0-9]{12}$/.test(aadhaar)) {
-    throw createError(400, 'Aadhaar number must contain exactly 12 digits.');
+    throw createError(
+      400,
+      'Aadhaar number must contain exactly 12 digits.'
+    );
   }
 
   const syntheticEmail = `${phone}@ims.com`;
 
-  const existingUser = await User.findOne({ email: syntheticEmail });
+  const existingUser = await User.findOne({
+    email: syntheticEmail,
+  });
 
   if (existingUser) {
-    throw createError(409, 'A student with this phone number already exists.');
+    throw createError(
+      409,
+      'A student with this phone number already exists.'
+    );
   }
 
   const temporaryPassword = crypto.randomBytes(12).toString('base64url');
@@ -887,7 +959,7 @@ exports.createDirectAdmission = async (data, staffUserId) => {
   let student;
 
   try {
-    // 1. Create student login account
+    // 1. Create student login account.
     user = await User.create({
       name: fullName,
       email: syntheticEmail,
@@ -898,12 +970,10 @@ exports.createDirectAdmission = async (data, staffUserId) => {
       must_change_password: true,
     });
 
-    // 2. Generate student ID
-    const studentId = await generateDirectAdmissionStudentId(
-      new Date().getFullYear()
-    );
+    // 2. Generate student ID using the shared counter.
+    const studentId = await generateStudentId();
 
-    // 3. Create student profile
+    // 3. Create student profile.
     student = await Student.create({
       student_id: studentId,
       user_id: user._id,
@@ -932,7 +1002,7 @@ exports.createDirectAdmission = async (data, staffUserId) => {
       created_by: staffUserId,
     });
 
-    // 4. Generate student fee records
+    // 4. Generate student fee records.
     const feeRecords = feeComponents.map((component) => ({
       student_id: student._id,
       course_id: course._id,
@@ -947,7 +1017,7 @@ exports.createDirectAdmission = async (data, staffUserId) => {
 
     await StudentFee.insertMany(feeRecords);
 
-    // 5. Create initial stage history
+    // 5. Create initial stage history.
     await StudentStageHistory.create({
       student_id: student._id,
       from_stage: null,
@@ -957,12 +1027,17 @@ exports.createDirectAdmission = async (data, staffUserId) => {
       changed_at: new Date(),
       remarks: 'Direct admission without enquiry.',
     });
-
   } catch (error) {
-    // Roll back records created during direct admission
+    // Roll back records created during direct admission.
     if (student?._id) {
-      await StudentFee.deleteMany({ student_id: student._id }).catch(() => {});
-      await StudentStageHistory.deleteMany({ student_id: student._id }).catch(() => {});
+      await StudentFee.deleteMany({
+        student_id: student._id,
+      }).catch(() => {});
+
+      await StudentStageHistory.deleteMany({
+        student_id: student._id,
+      }).catch(() => {});
+
       await Student.findByIdAndDelete(student._id).catch(() => {});
     }
 
