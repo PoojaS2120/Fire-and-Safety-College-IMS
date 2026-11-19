@@ -4,7 +4,7 @@ const router = express.Router();
 const { verifyToken } = require('../../../middlewares/auth');
 const { authorize } = require('../../../middlewares/authorize');
 const enquiryController = require('../controllers/enquiryController');
-
+const { uploadAdmissionImages } = require('../../uploads/middleware/uploadMiddleware');
 router.use(verifyToken, authorize('super_admin', 'office_staff'));
 
 // Create enquiry
@@ -19,7 +19,14 @@ router.put('/:id', enquiryController.updateEnquiry);
 
 router.get('/:id/admission-prefill', enquiryController.getAdmissionPrefill);
 
-router.post('/:id/convert', enquiryController.convertEnquiry);
+router.post(
+  '/:id/convert',
+  uploadAdmissionImages.fields([
+    { name: 'student_photo', maxCount: 1 },
+    { name: 'student_signature', maxCount: 1 },
+  ]),
+  enquiryController.convertEnquiry
+);
 
 // NEW: Delete enquiry
 router.delete('/:id', enquiryController.deleteEnquiry);

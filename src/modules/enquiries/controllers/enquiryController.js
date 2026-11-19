@@ -1,3 +1,10 @@
+const fs = require('fs/promises');
+const path = require('path');
+const crypto = require('crypto');
+const sharp = require('sharp');
+const Student = require('../../students/models/Student');
+const { uploadDir } = require('../../uploads/middleware/uploadMiddleware');
+const { validateFileContent } = require('../../uploads/middleware/validateFileContent');
 const enquiryService = require('../services/enquiryService');
 const admissionConversionService = require('../services/admissionConversionService');
 const {
@@ -149,35 +156,111 @@ exports.updateEnquiryStatus = async (req, res, next) => {
   }
 };
 
+const IMG_CFG = {
+  student_photo:     { maxBytes: 250 * 1024, folder: 'student-photos' },
+  student_signature: { maxBytes: 150 * 1024, folder: 'student-signatures' },
+};
+
+async function compressImage(inputPath, outputPath, maxBytes) {
+  let quality = 85, width = 1600;
+  for (let i = 0; i < 12; i++) {
+    await sharp(inputPath, { failOn: 'error' })
+      .rotate()
+      .resize({ width, height: 1600, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality, mozjpeg: true })
+      .toFile(outputPath);
+    const stats = await fs.stat(outputPath);
+    if (stats.size <= maxBytes) return stats;
+    await fs.unlink(outputPath).catch(() => {});
+    if (quality > 35) quality -= 10;
+    else { width = Math.floor(width * 0.8); quality = 60; }
+  }
+  throw Object.assign(new Error('Image too large to compress.'), { statusCode: 400 });
+}
+
+async function processImage(file, type) {
+  const cfg = IMG_CFG[type];
+  if (!cfg) throw Object.assign(new Error('Invalid image type.'), { statusCode: 400 });
+
+  if (!(await validateFileContent(file))) {
+    throw Object.assign(new Error('Invalid image content.'), { statusCode: 400 });
+  }
+
+  const dir = path.join(uploadDir, cfg.folder);
+  await fs.mkdir(dir, { recursive: true });
+  const filename = `${crypto.randomUUID()}.jpg`;
+  const out = path.join(dir, filename);
+
+  try {
+    const meta = await sharp(file.path, { failOn: 'error' }).metadata();
+    if (!['jpeg', 'png', 'webp'].includes(meta.format)) {
+      throw Object.assign(new Error('Only JPG/PNG/WEBP allowed.'), { statusCode: 400 });
+    }
+    const stats = await compressImage(file.path, out, cfg.maxBytes);
+    return {
+      file_name: filename,
+      file_path: path.relative(uploadDir, out).replace(/\\/g, '/'),
+      mime_type: 'image/jpeg',
+      size_bytes: stats.size,
+      uploaded_at: new Date(),
+    };
+  } finally {
+    await fs.unlink(file.path).catch(() => {});
+  }
+}
 // CONVERT ENQUIRY TO ADMISSION
 exports.convertEnquiry = async (req, res, next) => {
   try {
-    const { error, value } = convertEnquirySchema.validate(req.body, {
-      abortEarly: true,
-      stripUnknown: false,
-    });
-
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.details[0].message,
-      });
+    let body = req.body;
+    if (req.is('multipart/form-data')) {
+      if (typeof req.body?.data !== 'string') {
+        return res.status(400).json({ success: false, message: 'Send JSON in "data" field.' });
+      }
+      try { body = JSON.parse(req.body.data); }
+      catch { return res.status(400).json({ success: false, message: 'Invalid JSON in "data".' }); }
     }
 
-    const result =
-      await admissionConversionService.convertEnquiryToAdmission(
-        req.params.id,
-        value,
-        req.user.id
-      );
+    const { error, value } = convertEnquirySchema.validate(body, {
+      abortEarly: true, stripUnknown: false,
+    });
+    if (error) return res.status(400).json({ success: false, message: error.details[0].message });
+
+    if (value.admission_form?.images) delete value.admission_form.images.parent_signature;
+    if (value.admission_form?.office_use) delete value.admission_form.office_use.principal_signature;
+
+    const files = req.files || {};
+    const imgs = {};
+    if (files.student_photo?.[0]) imgs.student_photo = await processImage(files.student_photo[0], 'student_photo');
+    if (files.student_signature?.[0]) imgs.student_signature = await processImage(files.student_signature[0], 'student_signature');
+
+    if (Object.keys(imgs).length) {
+      value.admission_form = value.admission_form || {};
+      value.admission_form.images = { ...(value.admission_form.images || {}), ...imgs };
+    }
+
+    const result = await admissionConversionService.convertEnquiryToAdmission(
+      req.params.id, value, req.user.id
+    );
+
+    if (Object.keys(imgs).length && result?.student?.id) {
+      const set = {};
+      if (imgs.student_photo) set['admission_form.images.student_photo'] = imgs.student_photo;
+      if (imgs.student_signature) set['admission_form.images.student_signature'] = imgs.student_signature;
+      await Student.updateOne({ _id: result.student.id }, { $set: set });
+    }
 
     return res.status(201).json({
       success: true,
       message: 'Enquiry converted to admission successfully.',
       data: result,
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    if (req.files) {
+      for (const arr of Object.values(req.files)) {
+        for (const f of arr) await fs.unlink(f.path).catch(() => {});
+      }
+    }
+    next(err);
   }
 };
 
@@ -196,8 +279,7 @@ exports.deleteEnquiry = async (req, res, next) => {
     next(error);
   }
 };
-<<<<<<< HEAD
-=======
+
 
 // GET ADMISSION PREFILL FROM ENQUIRY
 exports.getAdmissionPrefill = async (req, res, next) => {
@@ -212,4 +294,3 @@ exports.getAdmissionPrefill = async (req, res, next) => {
     next(error);
   }
 };
->>>>>>> fbb06e7 (Update student admission and backend features)

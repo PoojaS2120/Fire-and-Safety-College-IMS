@@ -80,9 +80,25 @@ const uploadVideo = multer({
   },
 });
 
+const uploadAdmissionImages = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (
+      !['.jpg', '.jpeg', '.png', '.webp'].includes(ext) ||
+      !['student_photo', 'student_signature'].includes(file.fieldname)
+    ) {
+      return cb(new Error('Only JPG/PNG/WEBP in fields student_photo, student_signature.'));
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 10 * 1024 * 1024, files: 2 },
+});
+
 module.exports = {
   upload,
   uploadVideo,
+  uploadAdmissionImages,
   uploadDir,
   MAX_FILE_SIZE,
   MAX_VIDEO_SIZE,

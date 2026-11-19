@@ -284,16 +284,12 @@ const admissionFormSchema = new mongoose.Schema(
     },
 
     // Store file metadata and paths, not base64 image content.
-    images: {
+     images: {
       student_photo: {
         type: imageSchema,
         default: () => ({}),
       },
       student_signature: {
-        type: imageSchema,
-        default: () => ({}),
-      },
-      parent_signature: {
         type: imageSchema,
         default: () => ({}),
       },
@@ -324,10 +320,7 @@ const admissionFormSchema = new mongoose.Schema(
         enum: ['pending', 'granted', 'rejected'],
         default: 'pending',
       },
-      principal_signature: {
-        type: imageSchema,
-        default: () => ({}),
-      },
+      
     },
   },
   { _id: false }
