@@ -1,12 +1,22 @@
+
 // const User = require('../../auth/models/User');
+// const Role = require('../../rbac/models/Role');
 // const auditService = require('../../audit/services/auditService');
 // const getIp = require('../../audit/utils/getIp').getIp;
 
-// // Create User (with audit)
+// // ==========================================
+// // CREATE USER
+// // ==========================================
 // exports.createUser = async (userData, req) => {
 //   const existingUser = await User.findOne({ email: userData.email });
 //   if (existingUser) {
 //     throw { statusCode: 400, message: 'User with this email already exists' };
+//   }
+
+//   // Verify the role actually exists
+//   const role = await Role.findById(userData.role);
+//   if (!role) {
+//     throw { statusCode: 400, message: 'Invalid role selected' };
 //   }
 
 //   const user = await User.create(userData);
@@ -23,7 +33,7 @@
 //       entity: 'User',
 //       entityId: user._id,
 //       oldValues: null,
-//       newValues: { email: user.email, role: user.role, name: user.name },
+//       newValues: { email: user.email, role: role.name, name: user.name },
 //       ip: getIp(req),
 //     });
 //   }
@@ -31,11 +41,18 @@
 //   return safeUser;
 // };
 
-// // Get All Users (with pagination + search)
+// // ==========================================
+// // GET ALL USERS (Paginated + Populated)
+// // ==========================================
 // exports.getUsers = async (query) => {
 //   const filter = {};
 
-//   if (query.role) filter.role = query.role;
+//   // If the frontend sends a role name (e.g. "faculty"), we need to find its ID first
+//   if (query.role) {
+//     const roleDoc = await Role.findOne({ name: query.role.toLowerCase() });
+//     if (roleDoc) filter.role = roleDoc._id;
+//   }
+
 //   if (query.is_active !== undefined) filter.is_active = query.is_active === 'true';
 
 //   if (query.search || query.q) {
@@ -49,12 +66,13 @@
 //   }
 
 //   const page = Math.max(1, parseInt(query.page, 10) || 1);
-//   const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 20));
+//   const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 10));
 //   const skip = (page - 1) * limit;
 
 //   const [users, total] = await Promise.all([
 //     User.find(filter)
 //       .select('-password')
+//       .populate('role', 'name') // 🚨 THE FIX: Fetches the role name
 //       .sort({ createdAt: -1 })
 //       .skip(skip)
 //       .limit(limit),
@@ -72,14 +90,21 @@
 //   };
 // };
 
-// // Get Single User
+// // ==========================================
+// // GET SINGLE USER
+// // ==========================================
 // exports.getUserById = async (id) => {
-//   const user = await User.findById(id).select('-password');
+//   const user = await User.findById(id)
+//     .select('-password')
+//     .populate('role', 'name'); // 🚨 THE FIX: Fetches the role name
+
 //   if (!user) throw { statusCode: 404, message: 'User not found' };
 //   return user;
 // };
 
-// // Update User Details
+// // ==========================================
+// // UPDATE USER
+// // ==========================================
 // exports.updateUser = async (id, updateData, req) => {
 //   const existing = await User.findById(id);
 //   if (!existing) throw { statusCode: 404, message: 'User not found' };
@@ -106,7 +131,9 @@
 //     id,
 //     { $set: allowedUpdates },
 //     { returnDocument: 'after', runValidators: true }
-//   ).select('-password');
+//   )
+//     .select('-password')
+//     .populate('role', 'name'); // 🚨 THE FIX
 
 //   if (!user) throw { statusCode: 404, message: 'User not found' };
 
@@ -121,7 +148,7 @@
 //       newValues: {
 //         name: user.name,
 //         phone: user.phone,
-//         role: user.role,
+//         role: user.role?.name || user.role,
 //       },
 //       ip: getIp(req),
 //     });
@@ -130,7 +157,9 @@
 //   return user;
 // };
 
-// // Toggle User Status (Activate / Deactivate)
+// // ==========================================
+// // TOGGLE USER STATUS
+// // ==========================================
 // exports.toggleStatus = async (id, req) => {
 //   const user = await User.findById(id);
 //   if (!user) throw { statusCode: 404, message: 'User not found' };
@@ -163,7 +192,9 @@
 //   };
 // };
 
-// // Admin Reset User Password
+// // ==========================================
+// // ADMIN RESET PASSWORD
+// // ==========================================
 // exports.adminResetPassword = async (id, newPassword, req) => {
 //   // Enforce minimum password strength
 //   if (typeof newPassword !== 'string' || newPassword.length < 8) {
@@ -200,6 +231,11 @@
 //     message: 'Password reset successfully. User must change it on next login.',
 //   };
 // };
+
+
+
+
+
 
 const User = require('../../auth/models/User');
 const Role = require('../../rbac/models/Role');
@@ -251,8 +287,21 @@ exports.getUsers = async (query) => {
 
   // If the frontend sends a role name (e.g. "faculty"), we need to find its ID first
   if (query.role) {
-    const roleDoc = await Role.findOne({ name: query.role.toLowerCase() });
-    if (roleDoc) filter.role = roleDoc._id;
+    const requestedRole = query.role.toLowerCase();
+    
+    if (requestedRole === 'staff') {
+      // 🚨 STAFF LOGIC: Find everyone EXCEPT students
+      const studentRole = await Role.findOne({ name: 'student' });
+      if (studentRole) {
+        filter.role = { $ne: studentRole._id }; // $ne means "Not Equal"
+      }
+    } else {
+      // 🚨 STUDENT (or specific role) LOGIC: Find exactly that role
+      const roleDoc = await Role.findOne({ name: requestedRole });
+      if (roleDoc) {
+        filter.role = roleDoc._id;
+      }
+    }
   }
 
   if (query.is_active !== undefined) filter.is_active = query.is_active === 'true';
@@ -274,7 +323,7 @@ exports.getUsers = async (query) => {
   const [users, total] = await Promise.all([
     User.find(filter)
       .select('-password')
-      .populate('role', 'name') // 🚨 THE FIX: Fetches the role name
+      .populate('role', 'name') // Fetches the role name
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -298,7 +347,7 @@ exports.getUsers = async (query) => {
 exports.getUserById = async (id) => {
   const user = await User.findById(id)
     .select('-password')
-    .populate('role', 'name'); // 🚨 THE FIX: Fetches the role name
+    .populate('role', 'name'); // Fetches the role name
 
   if (!user) throw { statusCode: 404, message: 'User not found' };
   return user;
@@ -335,7 +384,7 @@ exports.updateUser = async (id, updateData, req) => {
     { returnDocument: 'after', runValidators: true }
   )
     .select('-password')
-    .populate('role', 'name'); // 🚨 THE FIX
+    .populate('role', 'name');
 
   if (!user) throw { statusCode: 404, message: 'User not found' };
 

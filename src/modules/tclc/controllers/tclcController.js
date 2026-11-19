@@ -54,11 +54,18 @@ exports.checkEligibility = async (req, res, next) => {
 
 exports.checkStudentEligibility = async (req, res, next) => {
   try {
-    const result = await tclcService.checkStudentEligibility(
-      req.params.studentId,
-      req.query.type
-    );
+    const { studentId } = req.params;
+    const { type } = req.query;
 
+    // Default to 'TC' if not provided, or handle the error gracefully
+    if (!type) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide a certificate type (TC or LC) in the query parameters.' 
+      });
+    }
+
+    const result = await tclcService.checkStudentEligibility(studentId, type);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
