@@ -196,8 +196,7 @@ exports.deleteEnquiry = async (req, res, next) => {
     next(error);
   }
 };
-<<<<<<< HEAD
-=======
+
 
 // GET ADMISSION PREFILL FROM ENQUIRY
 exports.getAdmissionPrefill = async (req, res, next) => {
@@ -212,4 +211,3 @@ exports.getAdmissionPrefill = async (req, res, next) => {
     next(error);
   }
 };
->>>>>>> fbb06e7 (Update student admission and backend features)

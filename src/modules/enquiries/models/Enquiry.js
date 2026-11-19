@@ -1,4 +1,3 @@
-
 const mongoose = require('mongoose');
 
 const academicQualificationSchema = new mongoose.Schema(
@@ -62,63 +61,52 @@ const enquirySchema = new mongoose.Schema(
       trim: true,
       maxlength: 150,
     },
-<<<<<<< HEAD
-=======
 
->>>>>>> fbb06e7 (Update student admission and backend features)
     fathers_name: {
       type: String,
       trim: true,
       default: null,
-<<<<<<< HEAD
-    },
-=======
       maxlength: 150,
     },
 
-   mothers_name: {
-  type: String,
-  trim: true,
-  default: null,
-  maxlength: 150,
-},
-religion: {
-  type: String,
-  trim: true,
-  maxlength: 100,
-  default: '',
-},
+    mothers_name: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: 150,
+    },
 
-caste: {
-  type: String,
-  trim: true,
-  maxlength: 100,
-  default: '',
-},
+    religion: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: '',
+    },
 
-category: {
-  type: String,
-  trim: true,
-  maxlength: 100,
-  default: '',
-},
+    caste: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: '',
+    },
 
->>>>>>> fbb06e7 (Update student admission and backend features)
+    category: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: '',
+    },
+
     date_of_birth: {
       type: Date,
       default: null,
     },
-<<<<<<< HEAD
-=======
 
     // Legacy qualification field retained for backward compatibility
->>>>>>> fbb06e7 (Update student admission and backend features)
     qualification: {
       type: String,
       trim: true,
       default: null,
-<<<<<<< HEAD
-=======
       maxlength: 150,
     },
 
@@ -126,7 +114,6 @@ category: {
     academic_qualification: {
       type: [academicQualificationSchema],
       default: [],
->>>>>>> fbb06e7 (Update student admission and backend features)
     },
 
     // Physical measurements
@@ -135,19 +122,13 @@ category: {
       default: null,
       min: 0,
     },
-<<<<<<< HEAD
-=======
 
->>>>>>> fbb06e7 (Update student admission and backend features)
     weight_kg: {
       type: Number,
       default: null,
       min: 0,
     },
-<<<<<<< HEAD
-=======
 
->>>>>>> fbb06e7 (Update student admission and backend features)
     chest_cm: {
       type: Number,
       default: null,
@@ -167,23 +148,6 @@ category: {
       trim: true,
       maxlength: 15,
       default: null,
-<<<<<<< HEAD
-    },
-    mobile: {
-      type: String,
-      trim: true,
-      maxlength: 15,
-      default: null,
-    },
-
-    // Backward compatibility with existing enquiry APIs
-    phone: {
-      type: String,
-      trim: true,
-      maxlength: 15,
-      default: null,
-=======
->>>>>>> fbb06e7 (Update student admission and backend features)
     },
 
     mobile: {
@@ -193,12 +157,12 @@ category: {
       default: null,
     },
 
-  home_mobile_no: {
-  type: String,
-  trim: true,
-  maxlength: 15,
-  default: '',
-},
+    home_mobile_no: {
+      type: String,
+      trim: true,
+      maxlength: 15,
+      default: '',
+    },
 
     // Backward compatibility with existing enquiry APIs
     phone: {
@@ -221,38 +185,36 @@ category: {
       trim: true,
       default: null,
     },
-<<<<<<< HEAD
-=======
-    postal_address: {
-  address: {
-    type: String,
-    trim: true,
-    maxlength: 1000,
-    default: '',
-  },
-  pin: {
-    type: String,
-    trim: true,
-    match: [/^(?:[0-9]{6})?$/, 'PIN code must contain exactly 6 digits.'],
-    default: '',
-  },
-},
 
-permanent_address: {
-  address: {
-    type: String,
-    trim: true,
-    maxlength: 1000,
-    default: '',
-  },
-  pin: {
-    type: String,
-    trim: true,
-    match: [/^(?:[0-9]{6})?$/, 'PIN code must contain exactly 6 digits.'],
-    default: '',
-  },
-},
->>>>>>> fbb06e7 (Update student admission and backend features)
+    postal_address: {
+      address: {
+        type: String,
+        trim: true,
+        maxlength: 1000,
+        default: '',
+      },
+      pin: {
+        type: String,
+        trim: true,
+        match: [/^(?:[0-9]{6})?$/, 'PIN code must contain exactly 6 digits.'],
+        default: '',
+      },
+    },
+
+    permanent_address: {
+      address: {
+        type: String,
+        trim: true,
+        maxlength: 1000,
+        default: '',
+      },
+      pin: {
+        type: String,
+        trim: true,
+        match: [/^(?:[0-9]{6})?$/, 'PIN code must contain exactly 6 digits.'],
+        default: '',
+      },
+    },
 
     // Additional information
     work_experience: {
@@ -260,22 +222,6 @@ permanent_address: {
       trim: true,
       default: null,
     },
-<<<<<<< HEAD
-    how_did_you_know: {
-      type: [{
-        type: String,
-        enum: [
-          'friends',
-          'sahyadri',
-          'cable_tv',
-          'our_representative',
-          'newspaper',
-          'internet',
-        ],
-      }],
-      default: [],
-    },
-=======
 
     how_did_you_know: {
       type: [
@@ -294,25 +240,18 @@ permanent_address: {
       default: [],
     },
 
->>>>>>> fbb06e7 (Update student admission and backend features)
     other: {
       type: String,
       trim: true,
       default: null,
     },
-<<<<<<< HEAD
-=======
 
->>>>>>> fbb06e7 (Update student admission and backend features)
     suggestion: {
       type: String,
       trim: true,
       default: null,
     },
-<<<<<<< HEAD
-=======
 
->>>>>>> fbb06e7 (Update student admission and backend features)
     remark: {
       type: String,
       trim: true,
@@ -324,10 +263,7 @@ permanent_address: {
       type: String,
       default: null,
     },
-<<<<<<< HEAD
-=======
 
->>>>>>> fbb06e7 (Update student admission and backend features)
     applicant_signature: {
       type: String,
       default: null,

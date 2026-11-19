@@ -264,8 +264,7 @@ exports.deleteEnquiry = async (id) => {
     message: 'Enquiry deleted successfully.',
   };
 };
-<<<<<<< HEAD
-=======
+
 
 // GET ADMISSION PREFILL DATA
 // Returns existing enquiry details in the admission form's expected structure.
@@ -413,4 +412,3 @@ exports.getAdmissionPrefill = async (id) => {
     },
   };
 };
->>>>>>> fbb06e7 (Update student admission and backend features)
