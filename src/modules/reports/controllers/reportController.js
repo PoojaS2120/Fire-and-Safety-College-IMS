@@ -229,3 +229,20 @@ exports.downloadLibraryIssues = async (req, res, next) => {
     next(err);
   }
 };
+// ================= COMBINED EXCEL REPORT =================
+
+exports.downloadAllReports = async (req, res, next) => {
+  try {
+    const workbook = await reportService.getCombinedReportsReport(
+      req.query
+    );
+
+    streamExcel(
+      res,
+      workbook,
+      `Complete_Reports_${Date.now()}`
+    );
+  } catch (error) {
+    next(error);
+  }
+};

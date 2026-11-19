@@ -133,7 +133,30 @@ const getFilteredStudentIds = async (query = {}) => {
 };
 
 // ================= EXCEL WORKBOOK GENERATOR =================
+const generateWorkbook = (data, columns, sheetName) => {
+  const workbook = XLSX.utils.book_new();
 
+  const rows = [
+    columns.map((column) => column.header),
+    ...data.map((item) =>
+      columns.map((column) => item[column.key] ?? '')
+    ),
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+
+  worksheet['!cols'] = columns.map((column) => ({
+    wch: column.width || 15,
+  }));
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    sheetName.substring(0, 31)
+  );
+
+  return workbook;
+};
 // ============================================================
 // 1. FEE COLLECTION REPORT
 // ============================================================
@@ -1438,4 +1461,47 @@ exports.getLibraryIssuesReport = async (query = {}) => {
   ];
 
   return generateWorkbook(data, columns, 'Library Issues');
+};
+
+// ================= COMBINED EXCEL REPORT =================
+
+exports.getCombinedReportsReport = async (query = {}) => {
+  const combinedWorkbook = XLSX.utils.book_new();
+
+  const reportTasks = [
+    () => exports.getFeeCollectionReport(query),
+    () => exports.getPendingFeesReport(query),
+    () => exports.getAdmissionsReport(query),
+    () => exports.getEnquiriesReport(query),
+    () => exports.getStudentsReport(query),
+    () => exports.getReceiptsReport(query),
+    () => exports.getExamFormsReport(query),
+    () => exports.getOverdueBooksReport(),
+    () => exports.getLibraryInventoryReport(),
+    () => exports.getCourseWiseStudentsReport(query),
+    () => exports.getSchedulesReport(query),
+    () => exports.getClassTestsReport(query),
+    () => exports.getExamsResultsReport(query),
+    () => exports.getTcLcReport(query),
+    () => exports.getLibraryIssuesReport(query),
+  ];
+
+  for (const generateReport of reportTasks) {
+    const reportWorkbook = await generateReport();
+
+    if (!reportWorkbook.SheetNames.length) {
+      continue;
+    }
+
+    const sheetName = reportWorkbook.SheetNames[0];
+    const worksheet = reportWorkbook.Sheets[sheetName];
+
+    XLSX.utils.book_append_sheet(
+      combinedWorkbook,
+      worksheet,
+      sheetName
+    );
+  }
+
+  return combinedWorkbook;
 };

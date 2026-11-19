@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router();
 
@@ -9,6 +10,14 @@ router.use(verifyToken);
 
 // Admin and Office Staff access
 const adminOnly = authorize('super_admin', 'office_staff');
+
+// ================= COMBINED EXCEL REPORT =================
+
+router.get(
+  '/export/all',
+  adminOnly,
+  reportController.downloadAllReports
+);
 
 // ================= B-28: ACADEMIC & FINANCIAL REPORTS =================
 
@@ -76,6 +85,7 @@ router.get(
   authorize('super_admin', 'office_staff', 'librarian'),
   reportController.downloadLibraryInventory
 );
+
 // ================= B-41: COURSE-WISE STUDENTS =================
 
 router.get(
@@ -83,6 +93,7 @@ router.get(
   adminOnly,
   reportController.downloadCourseWiseStudents
 );
+
 // ================= B-41: SCHEDULES REPORT =================
 
 router.get(
@@ -90,6 +101,7 @@ router.get(
   adminOnly,
   reportController.downloadSchedules
 );
+
 // ================= B-41: TESTS REPORT =================
 
 router.get(
@@ -97,18 +109,23 @@ router.get(
   adminOnly,
   reportController.downloadClassTests
 );
+
 router.get(
   '/exams-results',
   adminOnly,
   reportController.downloadExamsResults
 );
-// TC / LC Report
+
+// ================= TC / LC REPORT =================
+
 router.get(
   '/tc-lc',
   adminOnly,
   reportController.downloadTcLcReport
 );
-// Library Issues
+
+// ================= LIBRARY ISSUES =================
+
 router.get(
   '/library-issues',
   authorize('super_admin', 'office_staff', 'librarian'),
