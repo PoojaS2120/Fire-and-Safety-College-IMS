@@ -34,6 +34,12 @@ const noticeSchema = new mongoose.Schema(
       default: null
     },
 
+    attachment: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Upload',
+  default: null
+},
+
     status: {
       type: String,
       enum: ['draft', 'published', 'withdrawn'],

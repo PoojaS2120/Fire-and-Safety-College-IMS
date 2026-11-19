@@ -55,7 +55,9 @@
 // module.exports = router;
 const express = require('express');
 const router = express.Router();
-
+const {
+  upload
+} = require('../../uploads/middleware/uploadMiddleware');
 const noticeController = require('../controllers/noticeController');
 
 const { verifyToken } = require('../../../middlewares/auth');
@@ -65,6 +67,19 @@ const { authorize, authorizeOrPermission } = require('../../../middlewares/autho
 // All Notice APIs require authentication
 router.use(verifyToken);
 
+// Upload PDF notice
+router.post(
+  '/upload',
+  authorizeOrPermission('notices.create', 'super_admin', 'office_staff'),
+  upload.single('file'),
+  noticeController.uploadPdfNotice
+);
+// Download notice PDF
+router.get(
+  '/:id/file',
+  authorizeOrPermission('notices.view', 'super_admin', 'office_staff'),
+  noticeController.downloadNoticeFile
+);
 // Create notice
 router.post(
   '/',
