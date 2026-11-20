@@ -7,21 +7,55 @@ const { authorize } = require('../../../middlewares/authorize');
 
 const iCardController = require('../controllers/iCardController');
 
-// Base authentication
 router.use(verifyToken);
 
-// List admitted students
+// CREATE I-CARD
+router.post(
+  '/',
+  authorize('super_admin', 'office_staff'),
+  iCardController.createICard
+);
+
+// GET ALL SAVED I-CARDS
+router.get(
+  '/',
+  authorize('super_admin', 'office_staff'),
+  iCardController.getAllICards
+);
+
+// LIST ELIGIBLE STUDENTS
 router.get(
   '/students',
   authorize('super_admin', 'office_staff'),
   iCardController.getICardStudents
 );
 
-// Fetch individual I-Card details
+// PREVIEW STUDENT I-CARD
 router.get(
   '/students/:studentId',
   authorize('super_admin', 'office_staff'),
   iCardController.getICardByStudentId
+);
+
+// GET SINGLE SAVED I-CARD
+router.get(
+  '/:id',
+  authorize('super_admin', 'office_staff'),
+  iCardController.getICardById
+);
+
+// UPDATE I-CARD
+router.put(
+  '/:id',
+  authorize('super_admin', 'office_staff'),
+  iCardController.updateICard
+);
+
+// DELETE I-CARD (SUPER ADMIN ONLY)
+router.delete(
+  '/:id',
+  authorize('super_admin'),
+  iCardController.deleteICard
 );
 
 module.exports = router;

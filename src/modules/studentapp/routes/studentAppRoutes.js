@@ -311,7 +311,11 @@ router.get(
   '/notices/batch',
   studentAppController.getStudentBatchNotices
 );
-
+// Download published PDF notice
+router.get(
+  '/notices/:id/download',
+  studentAppController.downloadStudentNotice
+);
 router.get(
   '/documents',
   authorize('student'),
