@@ -704,7 +704,6 @@ exports.getAdmissionPrefill = async (id) => {
     source: 'enquiry',
     full_name: enquiry.name || '',
     dob: enquiry.date_of_birth || enquiry.dob || null,
-    gender: enquiry.gender || null,
     qualification: enquiry.qualification || '',
     course_id: enquiry.course_interest_id?._id || null,
     course: enquiry.course_interest_id || null,

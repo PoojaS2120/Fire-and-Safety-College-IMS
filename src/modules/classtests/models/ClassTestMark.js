@@ -65,7 +65,11 @@ const classTestMarkSchema = new mongoose.Schema(
       required: true,
       min: 0
     },
-
+    status: {
+      type: String,
+      enum: ['present', 'absent'],
+      default: 'present',
+    },
     remarks: {
       type: String,
       trim: true,

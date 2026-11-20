@@ -1149,9 +1149,6 @@
 
 
 
-
-
-
 const mongoose = require('mongoose');
 const { buildOwnershipFilter } = require('../../../utils/ownershipFilter');
 
@@ -1676,19 +1673,26 @@ exports.enterBulkMarks = async (id, entries, user, ip) => {
   };
 
   for (const entry of entries) {
-    validateMarks(entry.marks_obtained, test.max_marks);
+    // If the status is 'absent', we don't need to validate marks against max_marks
+    if (entry.status !== 'absent') {
+      validateMarks(entry.marks_obtained, test.max_marks);
+    }
 
     const existing = await ClassTestMark.findOne({
       class_test_id: test._id,
       student_id: entry.student_id
     });
 
+    // Determine the final status and marks
+    const finalStatus = entry.status || 'present';
+    const finalMarks = finalStatus === 'absent' ? 0 : Number(entry.marks_obtained);
+
     if (existing) {
       const oldValues = existing.toObject();
 
       existing.history.push({
         old_marks: existing.marks_obtained,
-        new_marks: Number(entry.marks_obtained),
+        new_marks: finalMarks,
         old_remarks: existing.remarks,
         new_remarks: entry.remarks || '',
         changed_by: user.id,
@@ -1696,7 +1700,8 @@ exports.enterBulkMarks = async (id, entries, user, ip) => {
         change_source: 'bulk_entry'
       });
 
-      existing.marks_obtained = Number(entry.marks_obtained);
+      existing.status = finalStatus;
+      existing.marks_obtained = finalMarks;
       existing.remarks = entry.remarks || '';
       existing.last_updated_by = user.id;
 
@@ -1717,7 +1722,8 @@ exports.enterBulkMarks = async (id, entries, user, ip) => {
       const mark = await ClassTestMark.create({
         class_test_id: test._id,
         student_id: entry.student_id,
-        marks_obtained: Number(entry.marks_obtained),
+        status: finalStatus,
+        marks_obtained: finalMarks,
         remarks: entry.remarks || '',
         entered_by: user.id,
         last_updated_by: user.id
@@ -1758,7 +1764,10 @@ exports.updateStudentMark = async (
 
   checkPermission(test, user);
 
-  validateMarks(data.marks_obtained, test.max_marks);
+  // Only validate marks if the student is NOT absent
+  if (data.status !== 'absent') {
+    validateMarks(data.marks_obtained, test.max_marks);
+  }
 
   const students = await validateStudents(test, [studentId]);
 
@@ -1769,9 +1778,13 @@ exports.updateStudentMark = async (
   const oldMarks = mark.marks_obtained;
   const oldRemarks = mark.remarks;
 
+  // Determine the new status and marks
+  const newStatus = data.status || mark.status || 'present';
+  const newMarks = newStatus === 'absent' ? 0 : Number(data.marks_obtained);
+
   mark.history.push({
     old_marks: oldMarks,
-    new_marks: Number(data.marks_obtained),
+    new_marks: newMarks,
     old_remarks: oldRemarks,
     new_remarks: data.remarks ?? oldRemarks,
     changed_by: user.id,
@@ -1779,7 +1792,8 @@ exports.updateStudentMark = async (
     change_source: 'manual'
   });
 
-  mark.marks_obtained = Number(data.marks_obtained);
+  mark.status = newStatus;
+  mark.marks_obtained = newMarks;
 
   if (data.remarks !== undefined) {
     mark.remarks = data.remarks;

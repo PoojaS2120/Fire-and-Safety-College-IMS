@@ -90,7 +90,6 @@ exports.convertEnquirySchema = Joi.object({
   email: Joi.string().trim().email().max(200).allow('', null).optional(),
   phone: Joi.string().trim().pattern(phonePattern).allow('', null).optional(),
   full_name: Joi.string().trim().min(2).max(150).optional(),
-  gender: Joi.string().valid('male', 'female', 'other').allow(null).optional(),
   guardian_name: Joi.string().trim().max(150).allow('', null).optional(),
   guardian_phone: Joi.string().trim().pattern(phonePattern).allow('', null).optional(),
 
