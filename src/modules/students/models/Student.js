@@ -348,7 +348,7 @@ const studentSchema = new mongoose.Schema(
       maxlength: 150,
     },
     dob: { type: Date, required: true },
-    gender: { type: String, trim: true, maxlength: 10, default: null },
+    
     phone: { type: String, required: true, trim: true, maxlength: 15 },
     email: {
       type: String,

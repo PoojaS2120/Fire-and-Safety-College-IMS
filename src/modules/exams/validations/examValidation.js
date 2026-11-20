@@ -153,7 +153,7 @@ const bulkMarksSchema = Joi.object({
     .items(
       Joi.object({
         student_id: objectId.required(),
-
+        status: Joi.string().valid('present', 'absent').default('present'),
         marks_obtained: Joi.number()
           .min(0)
           .required(),

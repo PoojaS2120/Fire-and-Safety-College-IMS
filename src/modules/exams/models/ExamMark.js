@@ -66,6 +66,12 @@ const examMarkSchema = new mongoose.Schema(
       min: 0,
     },
 
+    status: {
+      type: String,
+      enum: ['present', 'absent'],
+      default: 'present',
+    },
+
     remarks: {
       type: String,
       trim: true,

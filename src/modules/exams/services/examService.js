@@ -1172,8 +1172,11 @@ exports.enterBulkMarks = async (id, entries, user, ip) => {
 
   await validateStudents(exam, studentIds);
 
+  // Only validate marks if the student is NOT absent
   for (const entry of entries) {
-    validateMarks(entry.marks_obtained, exam.max_marks);
+    if (entry.status !== 'absent') {
+      validateMarks(entry.marks_obtained, exam.max_marks);
+    }
   }
 
   const results = {
@@ -1188,12 +1191,16 @@ exports.enterBulkMarks = async (id, entries, user, ip) => {
       student_id: entry.student_id,
     });
 
+    // Default to present, and force marks to 0 if absent
+    const studentStatus = entry.status || 'present';
+    const finalMarks = studentStatus === 'absent' ? 0 : Number(entry.marks_obtained);
+
     if (existing) {
       const oldValues = existing.toObject();
 
       existing.history.push({
         old_marks: existing.marks_obtained,
-        new_marks: Number(entry.marks_obtained),
+        new_marks: finalMarks,
         old_remarks: existing.remarks || '',
         new_remarks: entry.remarks || '',
         changed_by: user.id,
@@ -1201,7 +1208,8 @@ exports.enterBulkMarks = async (id, entries, user, ip) => {
         change_source: 'bulk_entry',
       });
 
-      existing.marks_obtained = Number(entry.marks_obtained);
+      existing.status = studentStatus;
+      existing.marks_obtained = finalMarks;
       existing.remarks = entry.remarks || '';
       existing.last_updated_by = user.id;
 
@@ -1222,7 +1230,8 @@ exports.enterBulkMarks = async (id, entries, user, ip) => {
       const mark = await ExamMark.create({
         exam_id: exam._id,
         student_id: entry.student_id,
-        marks_obtained: Number(entry.marks_obtained),
+        status: studentStatus,
+        marks_obtained: finalMarks,
         remarks: entry.remarks || '',
         entered_by: user.id,
         last_updated_by: user.id,
