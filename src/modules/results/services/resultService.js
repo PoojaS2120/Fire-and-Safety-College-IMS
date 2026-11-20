@@ -92,7 +92,8 @@ exports.reviewResults = async (examId, user) => {
         exam_id: exam._id,
         student_id: { $in: studentIds },
       })
-        .select('student_id marks_obtained remarks')
+        // ADDED: 'status' here so we know if they are present/absent
+        .select('student_id marks_obtained remarks status') 
         .lean()
     : [];
 
@@ -106,11 +107,13 @@ exports.reviewResults = async (examId, user) => {
   const results = students.map(student => {
     const mark = marksMap.get(String(student._id));
 
+    // 1. If no mark record exists, it is pending
     if (!mark) {
       return {
         student_id: student._id,
         admission_number: student.student_id,
         student_name: student.full_name,
+        status: 'pending',
         marks_obtained: null,
         max_marks: exam.max_marks,
         passing_marks: exam.passing_marks,
@@ -120,6 +123,23 @@ exports.reviewResults = async (examId, user) => {
       };
     }
 
+    // 2. Check if the student was marked ABSENT
+    if (mark.status === 'absent') {
+      return {
+        student_id: student._id,
+        admission_number: student.student_id,
+        student_name: student.full_name,
+        status: 'absent',
+        marks_obtained: 0,
+        max_marks: exam.max_marks,
+        passing_marks: exam.passing_marks,
+        percentage: 0,
+        result: 'absent', // <-- NEW RESULT TYPE
+        remarks: mark.remarks || 'Student was absent',
+      };
+    }
+
+    // 3. Student is PRESENT -> Calculate normal Pass/Fail
     const percentage = Number(
       ((mark.marks_obtained / exam.max_marks) * 100).toFixed(2)
     );
@@ -128,6 +148,7 @@ exports.reviewResults = async (examId, user) => {
       student_id: student._id,
       admission_number: student.student_id,
       student_name: student.full_name,
+      status: 'present',
       marks_obtained: mark.marks_obtained,
       max_marks: exam.max_marks,
       passing_marks: exam.passing_marks,
@@ -140,17 +161,11 @@ exports.reviewResults = async (examId, user) => {
     };
   });
 
-  const pendingCount = results.filter(
-    item => item.result === 'pending'
-  ).length;
-
-  const passCount = results.filter(
-    item => item.result === 'pass'
-  ).length;
-
-  const failCount = results.filter(
-    item => item.result === 'fail'
-  ).length;
+  // Update counts for the summary
+  const pendingCount = results.filter(item => item.result === 'pending').length;
+  const passCount = results.filter(item => item.result === 'pass').length;
+  const failCount = results.filter(item => item.result === 'fail').length;
+  const absentCount = results.filter(item => item.result === 'absent').length; // <-- ADDED
 
   return {
     exam: {
@@ -171,6 +186,7 @@ exports.reviewResults = async (examId, user) => {
       pending: pendingCount,
       passed: passCount,
       failed: failCount,
+      absent: absentCount, // <-- ADDED TO SUMMARY
       ready_to_publish: pendingCount === 0,
     },
 
