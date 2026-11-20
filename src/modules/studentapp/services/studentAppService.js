@@ -1,3 +1,5 @@
+
+const mongoose = require('mongoose');
 const Student = require('../../students/models/Student');
 const ClassSchedule = require('../../classschedules/models/ClassSchedule');
 const ClassTest = require('../../classtests/models/ClassTest');
@@ -8,13 +10,11 @@ const materialService = require('../../materials/services/materialService');
 const libraryService = require('../../library/services/libraryService');
 const Notice = require('../../notices/models/Notice');
 const documentService = require('../../documents/services/documentService');
+const uploadService = require('../../uploads/services/uploadService');
 
-// GET /student/documents
-exports.getStudentDocuments = async (userId) => {
-  const student = await getAuthenticatedStudent(userId);
-
-  return documentService.getStudentDocuments(student._id);
-};
+// ==========================================
+// COMMON HELPERS
+// ==========================================
 
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -34,6 +34,41 @@ const getAuthenticatedStudent = async (userId) => {
   }
 
   return student;
+};
+
+// Build notice visibility rules from the authenticated student's profile.
+const getStudentNoticeAudienceConditions = (student) => {
+  const audienceConditions = [{ targetType: 'all' }];
+
+  const courseId = student.course_id?._id || student.course_id;
+  const batchId = student.batch_id?._id || student.batch_id;
+
+  if (courseId) {
+    audienceConditions.push({
+      targetType: 'course',
+      targetCourse: courseId
+    });
+  }
+
+  if (batchId) {
+    audienceConditions.push({
+      targetType: 'batch',
+      targetBatch: batchId
+    });
+  }
+
+  return audienceConditions;
+};
+
+// ==========================================
+// STUDENT DOCUMENTS
+// ==========================================
+
+// GET /student/documents
+exports.getStudentDocuments = async (userId) => {
+  const student = await getAuthenticatedStudent(userId);
+
+  return documentService.getStudentDocuments(student._id);
 };
 
 // ==========================================
@@ -166,7 +201,6 @@ exports.getStudentClassTests = async (userId, filters = {}) => {
     100
   );
 
-  // Students only see tests assigned to their own course and batch.
   const query = {
     course_id: student.course_id._id,
     batch_id: student.batch_id._id,
@@ -212,7 +246,6 @@ exports.getStudentClassTests = async (userId, filters = {}) => {
 };
 
 // GET /student/class-tests/marks
-// Fetch only the authenticated student's class test marks and attendance.
 exports.getClassTestMarks = async (userId) => {
   const student = await getAuthenticatedStudent(userId);
 
@@ -239,7 +272,7 @@ exports.getClassTestMarks = async (userId) => {
     student_id: student._id,
     class_test_id: { $in: classTests.map(test => test._id) }
   })
-    .select('class_test_id marks_obtained remarks attendance_status') // <-- ADDED ATTENDANCE_STATUS
+    .select('class_test_id marks_obtained remarks attendance_status')
     .lean();
 
   const marksMap = new Map(
@@ -252,15 +285,17 @@ exports.getClassTestMarks = async (userId) => {
   const results = classTests.map(test => {
     const mark = marksMap.get(String(test._id));
     const marksObtained = mark?.marks_obtained ?? null;
-    
-    // Check attendance
+
     const attendance = mark?.attendance_status || 'not_marked';
 
     let resultStatus = 'pending';
+
     if (attendance === 'absent') {
       resultStatus = 'absent';
     } else if (marksObtained !== null) {
-      resultStatus = marksObtained >= test.passing_marks ? 'pass' : 'fail';
+      resultStatus = marksObtained >= test.passing_marks
+        ? 'pass'
+        : 'fail';
     }
 
     return {
@@ -271,13 +306,15 @@ exports.getClassTestMarks = async (userId) => {
       max_marks: test.max_marks,
       passing_marks: test.passing_marks,
       status: test.status,
-      attendance_status: attendance, // <-- ADDED FOR THE APP
-      marks_obtained: attendance === 'absent' ? null : marksObtained, // If absent, don't show marks
+      attendance_status: attendance,
+      marks_obtained: attendance === 'absent'
+        ? null
+        : marksObtained,
       remarks: mark?.remarks || '',
       result: resultStatus
     };
   });
-  
+
   return {
     student: {
       student_id: student.student_id,
@@ -316,20 +353,27 @@ exports.getStudentClassTestById = async (userId, testId) => {
     throw createError('Class test not found.', 404);
   }
 
-  // FETCH THE STUDENT'S SPECIFIC MARK AND ATTENDANCE FOR THIS TEST
   const mark = await ClassTestMark.findOne({
     class_test_id: test._id,
     student_id: student._id
-  }).select('attendance_status marks_obtained remarks').lean();
+  })
+    .select('attendance_status marks_obtained remarks')
+    .lean();
 
-  const attendance = mark ? (mark.attendance_status || 'present') : 'not_marked';
+  const attendance = mark
+    ? (mark.attendance_status || 'present')
+    : 'not_marked';
+
   const marksObtained = mark ? mark.marks_obtained : null;
 
   let resultMessage = 'Results not published yet';
+
   if (attendance === 'absent') {
     resultMessage = 'You were absent for this test.';
   } else if (marksObtained !== null) {
-    resultMessage = marksObtained >= test.passing_marks ? 'Passed' : 'Failed';
+    resultMessage = marksObtained >= test.passing_marks
+      ? 'Passed'
+      : 'Failed';
   }
 
   return {
@@ -419,7 +463,6 @@ exports.getLibraryBooks = async (filters = {}) => {
 exports.getLibraryBook = async (bookId) => {
   const book = await libraryService.getBook(bookId);
 
-  // Students can only view active books.
   if (book.status !== 'active') {
     throw createError('Book is not available.', 404);
   }
@@ -432,6 +475,7 @@ exports.getLibraryBook = async (bookId) => {
 // ==========================================
 
 // GET /student/notices
+// Published notices for all students, the student's course, or batch.
 exports.getStudentNotices = async (userId, filters = {}) => {
   const student = await getAuthenticatedStudent(userId);
 
@@ -441,30 +485,19 @@ exports.getStudentNotices = async (userId, filters = {}) => {
     100
   );
 
-  const audienceConditions = [
-    { targetType: 'all' },
-    {
-      targetType: 'course',
-      targetCourse: student.course_id._id
-    }
-  ];
-
-  if (student.batch_id) {
-    audienceConditions.push({
-      targetType: 'batch',
-      targetBatch: student.batch_id._id
-    });
-  }
-
   const filter = {
     status: 'published',
-    $or: audienceConditions
+    $or: getStudentNoticeAudienceConditions(student)
   };
 
   const [rows, total] = await Promise.all([
     Notice.find(filter)
       .populate('targetCourse', 'name')
       .populate('targetBatch', 'name')
+      .populate({
+        path: 'attachment',
+        select: 'originalName mimeType size'
+      })
       .sort({ publishedAt: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
@@ -481,25 +514,25 @@ exports.getStudentNotices = async (userId, filters = {}) => {
 };
 
 // GET /student/notices/batch
+// Published notices assigned to the authenticated student's batch.
 exports.getStudentBatchNotices = async (userId, filters = {}) => {
   const student = await getAuthenticatedStudent(userId);
-
   const batchId = student.batch_id?._id || student.batch_id;
-
-  if (!batchId) {
-    return {
-      rows: [],
-      total: 0,
-      page: 1,
-      limit: 20
-    };
-  }
 
   const page = Math.max(parseInt(filters.page, 10) || 1, 1);
   const limit = Math.min(
     Math.max(parseInt(filters.limit, 10) || 20, 1),
     100
   );
+
+  if (!batchId) {
+    return {
+      rows: [],
+      total: 0,
+      page,
+      limit
+    };
+  }
 
   const filter = {
     status: 'published',
@@ -510,6 +543,10 @@ exports.getStudentBatchNotices = async (userId, filters = {}) => {
   const [rows, total] = await Promise.all([
     Notice.find(filter)
       .populate('targetBatch', 'name')
+      .populate({
+        path: 'attachment',
+        select: 'originalName mimeType size'
+      })
       .sort({ publishedAt: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
@@ -517,7 +554,65 @@ exports.getStudentBatchNotices = async (userId, filters = {}) => {
     Notice.countDocuments(filter)
   ]);
 
-  return { rows, total, page, limit };
+  return {
+    rows,
+    total,
+    page,
+    limit
+  };
+};
+
+// GET /student/notices/:id/download
+// Download only if the notice is published and visible to this student.
+exports.getStudentNoticeDownload = async (userId, noticeId) => {
+  if (!mongoose.Types.ObjectId.isValid(noticeId)) {
+    throw createError(
+      'Notice not found or not available to this student.',
+      404
+    );
+  }
+
+  const student = await getAuthenticatedStudent(userId);
+
+  const noticeFilter = {
+    _id: noticeId,
+    status: 'published',
+    $or: getStudentNoticeAudienceConditions(student)
+  };
+
+  const notice = await Notice.findOne(noticeFilter)
+    .select('attachment title');
+
+  if (!notice) {
+    throw createError(
+      'Notice not found or not available to this student.',
+      404
+    );
+  }
+
+  if (!notice.attachment) {
+    throw createError(
+      'This notice does not have an attached PDF.',
+      404
+    );
+  }
+
+  const { upload, filePath } =
+    await uploadService.getUploadForAuthorizedDownload(notice.attachment);
+
+  if (!upload || !filePath) {
+    throw createError('Notice attachment not found.', 404);
+  }
+
+  if (upload.mimeType !== 'application/pdf') {
+    throw createError('Notice attachment is not a PDF file.', 404);
+  }
+
+  return {
+    upload,
+    filePath,
+    noticeTitle: notice.title
+  };
 };
 
 // ==========================================
@@ -526,7 +621,6 @@ exports.getStudentBatchNotices = async (userId, filters = {}) => {
 
 // GET /student/results
 // Students can view only their own published exam results.
-
 exports.getStudentExamResults = async (userId) => {
   const student = await getAuthenticatedStudent(userId);
 
@@ -544,7 +638,6 @@ exports.getStudentExamResults = async (userId) => {
   const courseId = student.course_id._id;
   const batchId = student.batch_id._id;
 
-  // Fetch only published exams belonging to this student's course and batch.
   const exams = await Exam.find({
     course_id: courseId,
     batch_id: batchId,
@@ -568,7 +661,6 @@ exports.getStudentExamResults = async (userId) => {
     };
   }
 
-  // Fetch only the authenticated student's marks.
   const marks = await ExamMark.find({
     student_id: student._id,
     exam_id: { $in: exams.map(exam => exam._id) }
@@ -583,12 +675,10 @@ exports.getStudentExamResults = async (userId) => {
     ])
   );
 
-  // Build result response.
   const results = exams
     .map(exam => {
       const mark = marksMap.get(String(exam._id));
 
-      // Do not expose exams for which this student has no marks entry.
       if (!mark) return null;
 
       const marksObtained = Number(mark.marks_obtained);
