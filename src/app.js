@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -22,7 +23,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
-
+app.use('/private_uploads', express.static(path.join(__dirname, '../private_uploads')));
 // ============================================================
 // HEALTH CHECK
 // ============================================================
