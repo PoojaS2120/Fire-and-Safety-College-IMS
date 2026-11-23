@@ -151,11 +151,7 @@ exports.toggleStatus = async (req, res, next) => {
 
 exports.adminResetPassword = async (req, res, next) => {
   try {
-    const { error } = adminResetPasswordSchema.validate(req.body);
-    if (error) {
-      return res.status(400).json({ success: false, message: error.details[0].message });
-    }
-
+    // Validation is handled by the route middleware
     const result = await userService.adminResetPassword(req.params.id, req.body.password, req);
     res.status(200).json({ success: true, message: result.message });
   } catch (err) {

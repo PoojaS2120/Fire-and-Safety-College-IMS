@@ -236,7 +236,7 @@
 
 
 
-
+const bcrypt = require('bcrypt'); // ✅ ADD THIS LINE
 const User = require('../../auth/models/User');
 const Role = require('../../rbac/models/Role');
 const auditService = require('../../audit/services/auditService');
@@ -443,26 +443,33 @@ exports.toggleStatus = async (id, req) => {
   };
 };
 
+
 // ==========================================
 // ADMIN RESET PASSWORD
 // ==========================================
 exports.adminResetPassword = async (id, newPassword, req) => {
-  // Enforce minimum password strength
   if (typeof newPassword !== 'string' || newPassword.length < 8) {
-    throw {
-      statusCode: 400,
-      message: 'Password must be at least 8 characters',
-    };
+    throw { statusCode: 400, message: 'Password must be at least 8 characters' };
   }
 
   const user = await User.findById(id);
   if (!user) throw { statusCode: 404, message: 'User not found' };
 
-  user.password = newPassword;
-  user.must_change_password = true;
-  await user.save();
+  // 🚨 MANUALLY HASH THE PASSWORD
+  const salt = await bcrypt.genSalt(12);
+  const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-  // Audit log (NEVER log the password itself)
+  // Use updateOne to bypass the pre('save') hook entirely
+  await User.updateOne(
+    { _id: id },
+    { 
+      $set: { 
+        password: hashedPassword, 
+        must_change_password: true 
+      } 
+    }
+  );
+
   if (req) {
     await auditService.logAction({
       userId: req.user.id,
