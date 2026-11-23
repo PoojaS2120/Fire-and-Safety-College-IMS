@@ -55,7 +55,19 @@ router.put('/:id/status', enquiryController.updateEnquiryStatus);
 router.put('/:id', enquiryController.updateEnquiry);
 
 router.get('/:id/admission-prefill', enquiryController.getAdmissionPrefill);
-
+router.get(
+  '/:id/admission-form',
+  enquiryController.getAdmissionForm
+);
+router.put(
+  '/:id/admission-form',
+  uploadAdmissionImages.fields([
+    { name: 'student_photo', maxCount: 1 },
+    { name: 'student_signature', maxCount: 1 },
+    { name: 'parent_signature', maxCount: 1 },
+  ]),
+  enquiryController.updateAdmissionForm
+);
 router.post(
   '/:id/convert',
   uploadAdmissionImages.fields([
@@ -64,6 +76,10 @@ router.post(
     { name: 'parent_signature', maxCount: 1 }, // <-- ADDED
   ]),
   enquiryController.convertEnquiry
+);
+router.get(
+  '/:id/admission-form/download',
+  enquiryController.downloadAdmissionForm
 );
 
 // NEW: Delete enquiry

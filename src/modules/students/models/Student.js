@@ -156,11 +156,11 @@ const imageSchema = new mongoose.Schema(
   {
     file_name: { type: String, trim: true, default: null },
     file_path: { type: String, trim: true, default: null },
-    mime_type: {
-      type: String,
-      enum: ['image/jpeg', 'image/png', null],
-      default: null,
-    },
+mime_type: {
+  type: String,
+  enum: ['image/jpeg', 'image/png', 'image/webp', null],
+  default: null,
+},
     size_bytes: { type: Number, min: 1, default: null },
     uploaded_at: { type: Date, default: null },
   },
@@ -284,16 +284,20 @@ const admissionFormSchema = new mongoose.Schema(
     },
 
     // Store file metadata and paths, not base64 image content.
-     images: {
-      student_photo: {
-        type: imageSchema,
-        default: () => ({}),
-      },
-      student_signature: {
-        type: imageSchema,
-        default: () => ({}),
-      },
-    },
+images: {
+  student_photo: {
+    type: imageSchema,
+    default: () => ({}),
+  },
+  student_signature: {
+    type: imageSchema,
+    default: () => ({}),
+  },
+  parent_signature: {
+    type: imageSchema,
+    default: () => ({}),
+  },
+},
 
     declaration: {
       place: { type: String, trim: true, maxlength: 150, default: '' },

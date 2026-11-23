@@ -501,7 +501,8 @@
 // // };
 
 // 19 noc changes 
-
+const mongoose = require('mongoose');
+const Enquiry = require('../models/Enquiry');
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
@@ -798,3 +799,414 @@ exports.getAdmissionPrefill = async (req, res, next) => {
     next(error);
   }
 };
+// GET CONVERTED STUDENT ADMISSION FORM
+exports.getAdmissionForm = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid enquiry ID.',
+      });
+    }
+
+    // Find enquiry
+    const enquiry = await Enquiry.findById(id).select(
+      'name status converted_student_id'
+    );
+
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: 'Enquiry not found.',
+      });
+    }
+
+    if (!enquiry.converted_student_id) {
+      return res.status(404).json({
+        success: false,
+        message: 'This enquiry has not been converted into an admission.',
+      });
+    }
+
+    // Fetch admission data from Student collection
+    const student = await Student.findById(enquiry.converted_student_id)
+      .select('+admission_form.aadhaar_number')
+      .populate('course_id', 'name')
+      .populate('batch_id', 'name')
+      .lean();
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Converted student record not found.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Admission form retrieved successfully.',
+      data: {
+        enquiry_id: enquiry._id,
+        student: {
+          _id: student._id,
+          student_id: student.student_id,
+          full_name: student.full_name,
+          dob: student.dob,
+          phone: student.phone,
+          email: student.email,
+          address: student.address,
+          guardian_name: student.guardian_name,
+          guardian_phone: student.guardian_phone,
+          qualification: student.qualification,
+          course: student.course_id,
+          batch: student.batch_id,
+          admitted_on: student.admitted_on,
+        },
+        admission_form: student.admission_form || {},
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// SHARED HELPER: FETCH ADMISSION FORM DATA
+const fetchAdmissionFormData = async (id) => {
+  if (!mongoose.isValidObjectId(id)) {
+    const error = new Error('Invalid enquiry ID.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const enquiry = await Enquiry.findById(id).select(
+    'name status converted_student_id'
+  );
+
+  if (!enquiry) {
+    const error = new Error('Enquiry not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!enquiry.converted_student_id) {
+    const error = new Error(
+      'This enquiry has not been converted into an admission.'
+    );
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const student = await Student.findById(enquiry.converted_student_id)
+    .select('+admission_form.aadhaar_number')
+    .populate('course_id', 'name')
+    .populate('batch_id', 'name')
+    .lean();
+
+  if (!student) {
+    const error = new Error('Converted student record not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return {
+    enquiry_id: enquiry._id,
+    student: {
+      _id: student._id,
+      student_id: student.student_id,
+      full_name: student.full_name,
+      dob: student.dob,
+      phone: student.phone,
+      email: student.email,
+      address: student.address,
+      guardian_name: student.guardian_name,
+      guardian_phone: student.guardian_phone,
+      qualification: student.qualification,
+      course: student.course_id,
+      batch: student.batch_id,
+      admitted_on: student.admitted_on,
+    },
+    admission_form: student.admission_form || {},
+  };
+};
+
+
+// GET CONVERTED STUDENT ADMISSION FORM
+exports.getAdmissionForm = async (req, res, next) => {
+  try {
+    const data = await fetchAdmissionFormData(req.params.id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Admission form retrieved successfully.',
+      data,
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    next(error);
+  }
+};
+
+
+// DOWNLOAD ADMISSION FORM JSON
+exports.downloadAdmissionForm = async (req, res, next) => {
+  try {
+    const data = await fetchAdmissionFormData(req.params.id);
+
+    const fileName = `admission-form-${data.student.student_id || data.enquiry_id}.json`;
+
+    return res
+      .status(200)
+      .set({
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+      })
+      .send(
+        JSON.stringify(
+          {
+            success: true,
+            message: 'Admission form downloaded successfully.',
+            data,
+          },
+          null,
+          2
+        )
+      );
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    next(error);
+  }
+};
+
+// UPDATE CONVERTED STUDENT ADMISSION FORM
+
+const mergeObjects = (existing, updates) => {
+  const result = { ...(existing || {}) };
+
+  for (const [key, value] of Object.entries(updates || {})) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !(value instanceof Date)
+    ) {
+      result[key] = mergeObjects(result[key], value);
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
+};
+
+exports.updateAdmissionForm = async (req, res, next) => {
+  const processedImages = [];
+
+  try {
+    let body = req.body;
+
+    // Support multipart/form-data with JSON in the "data" field
+    if (req.is('multipart/form-data')) {
+      if (typeof req.body?.data !== 'string') {
+        return res.status(400).json({
+          success: false,
+          message: 'Send JSON in the "data" field.',
+        });
+      }
+
+      try {
+        body = JSON.parse(req.body.data);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid JSON in the "data" field.',
+        });
+      }
+    }
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid admission form data.',
+      });
+    }
+
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid enquiry ID.',
+      });
+    }
+
+    // Find enquiry and its converted student
+    const enquiry = await Enquiry.findById(id).select(
+      'converted_student_id'
+    );
+
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: 'Enquiry not found.',
+      });
+    }
+
+    if (!enquiry.converted_student_id) {
+      return res.status(404).json({
+        success: false,
+        message: 'This enquiry has not been converted into an admission.',
+      });
+    }
+
+    const student = await Student.findById(
+      enquiry.converted_student_id
+    ).select('+admission_form.aadhaar_number');
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: 'Converted student record not found.',
+      });
+    }
+
+    // Only allow these top-level student fields to be updated
+    const allowedStudentFields = [
+      'full_name',
+      'dob',
+      'phone',
+      'email',
+      'address',
+      'guardian_name',
+      'guardian_phone',
+      'qualification',
+    ];
+
+    for (const field of allowedStudentFields) {
+      if (
+        body.student &&
+        Object.prototype.hasOwnProperty.call(body.student, field)
+      ) {
+        student.set(field, body.student[field]);
+      }
+    }
+
+    // Merge admission form fields without replacing omitted fields
+    const allowedAdmissionFields = [
+      'fathers_name',
+      'mothers_name',
+      'religion',
+      'caste',
+      'category',
+      'postal_address',
+      'permanent_address',
+      'contact_details',
+      'aadhaar_number',
+      'academic_qualification',
+      'physical_details',
+      'declaration',
+      'office_use',
+    ];
+
+    const currentAdmissionForm =
+      student.admission_form?.toObject
+        ? student.admission_form.toObject()
+        : student.admission_form || {};
+
+    const incomingAdmissionForm = {};
+
+    for (const field of allowedAdmissionFields) {
+      if (
+        body.admission_form &&
+        Object.prototype.hasOwnProperty.call(body.admission_form, field)
+      ) {
+        incomingAdmissionForm[field] = body.admission_form[field];
+      }
+    }
+
+    const mergedAdmissionForm = mergeObjects(
+      currentAdmissionForm,
+      incomingAdmissionForm
+    );
+
+    student.set('admission_form', mergedAdmissionForm);
+
+    // Process uploaded images only when replacement files are supplied
+    const files = req.files || {};
+
+    const imageFields = [
+      'student_photo',
+      'student_signature',
+      'parent_signature',
+    ];
+
+    for (const field of imageFields) {
+      if (files[field]?.[0]) {
+        const imageData = await processImage(files[field][0], field);
+
+        processedImages.push(
+          path.join(uploadDir, imageData.file_path)
+        );
+
+        student.set(
+          `admission_form.images.${field}`,
+          imageData
+        );
+      }
+    }
+
+    await student.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Admission form updated successfully.',
+      data: {
+        enquiry_id: enquiry._id,
+        student: {
+          _id: student._id,
+          student_id: student.student_id,
+          full_name: student.full_name,
+          dob: student.dob,
+          phone: student.phone,
+          email: student.email,
+          address: student.address,
+          guardian_name: student.guardian_name,
+          guardian_phone: student.guardian_phone,
+          qualification: student.qualification,
+        },
+        admission_form: student.admission_form,
+      },
+    });
+  } catch (error) {
+    // Clean up newly processed image files if the update fails
+    for (const filePath of processedImages) {
+      await fs.unlink(filePath).catch(() => {});
+    }
+
+    // Clean up any remaining temporary uploads
+    if (req.files) {
+      for (const files of Object.values(req.files)) {
+        for (const file of files) {
+          await fs.unlink(file.path).catch(() => {});
+        }
+      }
+    }
+
+    next(error);
+  }
+};
+
+

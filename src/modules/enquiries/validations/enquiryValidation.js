@@ -4,10 +4,23 @@ const Joi = require('joi');
 const phonePattern = /^[0-9+\-\s()]{7,15}$/;
 
 const referralOptions = [
-  'friends', 'sahyadri', 'cable_tv', 'our_representative', 'newspaper', 'internet',
+  'friends',
+  'sahyadri',
+  'cable_tv',
+  'our_representative',
+  'newspaper',
+  'internet',
 ];
 
 const pinSchema = Joi.string().pattern(/^[0-9]{6}$/).allow('', null);
+
+const aadhaarSchema = Joi.string()
+  .trim()
+  .pattern(/^[0-9]{12}$/)
+  .messages({
+    'string.pattern.base': 'Aadhaar number must contain exactly 12 digits.',
+    'string.empty': 'Aadhaar number is required.',
+  });
 
 const addressSchema = Joi.object({
   address: Joi.string().trim().max(1000).allow('', null),
@@ -38,7 +51,10 @@ const enquiryFields = {
   dob: Joi.date().iso().less('now').allow('', null),
 
   qualification: Joi.string().trim().max(150).allow('', null),
-  academic_qualification: Joi.array().items(academicQualificationSchema).max(10).optional(),
+  academic_qualification: Joi.array()
+    .items(academicQualificationSchema)
+    .max(10)
+    .optional(),
 
   height_cm: Joi.number().min(0).allow(null),
   weight_kg: Joi.number().min(0).allow(null),
@@ -55,6 +71,7 @@ const enquiryFields = {
   permanent_address: addressSchema,
 
   work_experience: Joi.string().trim().max(2000).allow('', null),
+
   how_did_you_know: Joi.alternatives().try(
     Joi.array().items(Joi.string().valid(...referralOptions)).unique().max(6),
     Joi.string().valid(...referralOptions)
@@ -67,8 +84,14 @@ const enquiryFields = {
   applicant_signature: Joi.string().max(500000).allow('', null),
 
   source: Joi.string().valid(
-    'walk-in', 'phone', 'social media', 'website', 'referral', 'other'
+    'walk-in',
+    'phone',
+    'social media',
+    'website',
+    'referral',
+    'other'
   ),
+
   notes: Joi.string().trim().max(2000).allow('', null),
 };
 
@@ -77,10 +100,14 @@ exports.createEnquirySchema = Joi.object({
   name: enquiryFields.name.required(),
 }).unknown(false);
 
-exports.updateEnquirySchema = Joi.object(enquiryFields).min(1).unknown(false);
+exports.updateEnquirySchema = Joi.object(enquiryFields)
+  .min(1)
+  .unknown(false);
 
 exports.updateEnquiryStatusSchema = Joi.object({
-  status: Joi.string().valid('new', 'contacted', 'interested', 'closed').required(),
+  status: Joi.string()
+    .valid('new', 'contacted', 'interested', 'closed')
+    .required(),
 }).unknown(false);
 
 exports.convertEnquirySchema = Joi.object({
@@ -90,8 +117,10 @@ exports.convertEnquirySchema = Joi.object({
 
   qualification: Joi.string().trim().min(2).max(150).required(),
   address: Joi.string().trim().min(1).max(1000).required(),
+
   email: Joi.string().trim().email().max(200).allow('', null).optional(),
   phone: Joi.string().trim().pattern(phonePattern).allow('', null).optional(),
+
   full_name: Joi.string().trim().min(2).max(150).optional(),
   guardian_name: Joi.string().trim().max(150).allow('', null).optional(),
   guardian_phone: Joi.string().trim().pattern(phonePattern).allow('', null).optional(),
@@ -101,9 +130,17 @@ exports.convertEnquirySchema = Joi.object({
   religion: Joi.string().trim().max(100).allow('', null).optional(),
   caste: Joi.string().trim().max(100).allow('', null).optional(),
   category: Joi.string().trim().max(100).allow('', null).optional(),
-  academic_qualification: Joi.array().items(academicQualificationSchema).max(10).optional(),
+
+  // Aadhaar can be provided at the top level
+  aadhaar_number: aadhaarSchema.optional(),
+
+  academic_qualification: Joi.array()
+    .items(academicQualificationSchema)
+    .max(10)
+    .optional(),
 
   course_id: Joi.string().hex().length(24).optional(),
+
   contact_no: Joi.string().trim().pattern(phonePattern).allow('', null).optional(),
   mobile_no: Joi.string().trim().pattern(phonePattern).allow('', null).optional(),
   home_mobile_no: Joi.string().trim().pattern(phonePattern).allow('', null).optional(),
@@ -111,12 +148,15 @@ exports.convertEnquirySchema = Joi.object({
   // Allow nested admission_form payload if needed
   admission_form: Joi.object({
     course_id: Joi.string().hex().length(24).optional(),
+
     fathers_name: Joi.string().trim().max(150).allow('', null),
     mothers_name: Joi.string().trim().max(150).allow('', null),
     religion: Joi.string().trim().max(100).allow('', null),
     caste: Joi.string().trim().max(100).allow('', null),
     category: Joi.string().trim().max(100).allow('', null),
-    aadhaar_number: Joi.string().pattern(/^[0-9]{12}$/).allow('', null),
+
+    // Aadhaar can alternatively be provided inside admission_form
+    aadhaar_number: aadhaarSchema.optional(),
 
     postal_address: addressSchema.optional(),
     permanent_address: addressSchema.optional(),
@@ -149,7 +189,9 @@ exports.convertEnquirySchema = Joi.object({
       student_photo: Joi.object({
         file_name: Joi.string().allow('', null),
         file_path: Joi.string().allow('', null),
-        mime_type: Joi.string().valid('image/jpeg', 'image/png').allow(null),
+        mime_type: Joi.string()
+          .valid('image/jpeg', 'image/png', 'image/webp')
+          .allow(null),
         size_bytes: Joi.number().integer().min(1),
         uploaded_at: Joi.date().allow(null),
       }).allow(null).optional(),
@@ -157,7 +199,9 @@ exports.convertEnquirySchema = Joi.object({
       student_signature: Joi.object({
         file_name: Joi.string().allow('', null),
         file_path: Joi.string().allow('', null),
-        mime_type: Joi.string().valid('image/jpeg', 'image/png').allow(null),
+        mime_type: Joi.string()
+          .valid('image/jpeg', 'image/png', 'image/webp')
+          .allow(null),
         size_bytes: Joi.number().integer().min(1),
         uploaded_at: Joi.date().allow(null),
       }).allow(null).optional(),
@@ -165,7 +209,9 @@ exports.convertEnquirySchema = Joi.object({
       parent_signature: Joi.object({
         file_name: Joi.string().allow('', null),
         file_path: Joi.string().allow('', null),
-        mime_type: Joi.string().valid('image/jpeg', 'image/png').allow(null),
+        mime_type: Joi.string()
+          .valid('image/jpeg', 'image/png', 'image/webp')
+          .allow(null),
         size_bytes: Joi.number().integer().min(1),
         uploaded_at: Joi.date().allow(null),
       }).allow(null).optional(),
@@ -197,12 +243,22 @@ exports.convertEnquirySchema = Joi.object({
         .optional(),
     }).unknown(false).optional(),
   }).unknown(false).optional(),
-}).unknown(false).custom((value, helpers) => {
+})
+.unknown(false)
+.custom((value, helpers) => {
   // Ensure at least one date field is provided
   if (!value.dob && !value.date_of_birth) {
-    return helpers.error('any.required', {
-      message: 'dob or date_of_birth is required',
-    });
+    return helpers.message('dob or date_of_birth is required.');
+  }
+
+  // Aadhaar is mandatory for admission conversion
+  const aadhaarNumber =
+    value.aadhaar_number || value.admission_form?.aadhaar_number;
+
+  if (!aadhaarNumber) {
+    return helpers.message(
+      'Aadhaar number is required for admission conversion.'
+    );
   }
 
   return value;
