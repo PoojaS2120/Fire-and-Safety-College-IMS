@@ -258,16 +258,16 @@ const enquirySchema = new mongoose.Schema(
       default: null,
     },
 
-    // Signatures
-    authorized_sign: {
-      type: String,
-      default: null,
-    },
+    
+    // authorized_sign: {
+    //   type: String,
+    //   default: null,
+    // },
 
-    applicant_signature: {
-      type: String,
-      default: null,
-    },
+    // applicant_signature: {
+    //   type: String,
+    //   default: null,
+    // },
 
     // Existing enquiry management fields
     source: {

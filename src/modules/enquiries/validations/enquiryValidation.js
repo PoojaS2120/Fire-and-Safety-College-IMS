@@ -80,8 +80,8 @@ const enquiryFields = {
   other: Joi.string().trim().max(1000).allow('', null),
   suggestion: Joi.string().trim().max(2000).allow('', null),
   remark: Joi.string().trim().max(2000).allow('', null),
-  authorized_sign: Joi.string().max(500000).allow('', null),
-  applicant_signature: Joi.string().max(500000).allow('', null),
+  // authorized_sign: Joi.string().max(500000).allow('', null),
+  // applicant_signature: Joi.string().max(500000).allow('', null),
 
   source: Joi.string().valid(
     'walk-in',
