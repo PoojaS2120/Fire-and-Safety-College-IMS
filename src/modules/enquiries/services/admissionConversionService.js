@@ -658,8 +658,15 @@ exports.convertEnquiryToAdmission = async (enquiryId, admissionData = {}, staffU
 
   const enquiry = await Enquiry.findById(enquiryId);
   if (!enquiry) throw createError(404, 'Enquiry not found.');
-  if (enquiry.status === 'converted' || enquiry.converted_student_id) throw createError(409, 'This enquiry has already been converted.');
-  if (enquiry.status === 'closed') throw createError(400, 'Closed enquiries cannot be converted.');
+ if (enquiry.converted_student_id) {
+  throw createError(409, 'This enquiry has already been converted.');
+}
+if (enquiry.status !== 'interested') {
+  throw createError(
+    400,
+    'Only interested enquiries can be converted into admissions.'
+  );
+}
 
   // Course Selection
   const selectedCourseId = admissionData.course_id || enquiry.course_interest_id;
@@ -773,10 +780,9 @@ exports.convertEnquiryToAdmission = async (enquiryId, admissionData = {}, staffU
       remarks: 'Initial admission through enquiry conversion.',
     });
 
-    // 5. Mark Enquiry Converted
-    enquiry.status = 'converted';
-    enquiry.converted_student_id = student._id;
-    await enquiry.save();
+// 5. Link the converted student to the original enquiry
+enquiry.converted_student_id = student._id;
+await enquiry.save();
 
   } catch (err) {
     // Manual Rollback (Replaces transaction crash)

@@ -81,7 +81,10 @@ router.get(
   '/:id/admission-form/download',
   enquiryController.downloadAdmissionForm
 );
-
+router.get(
+  '/:id/admission-form/images/:imageType',
+  enquiryController.getAdmissionFormImage
+);
 // NEW: Delete enquiry
 router.delete('/:id', enquiryController.deleteEnquiry);
 

@@ -106,7 +106,12 @@ exports.updateEnquirySchema = Joi.object(enquiryFields)
 
 exports.updateEnquiryStatusSchema = Joi.object({
   status: Joi.string()
-    .valid('new', 'contacted', 'interested', 'closed')
+    .valid(
+      'new',
+      'interested',
+      'not_interested',
+      'follow_up'
+    )
     .required(),
 }).unknown(false);
 

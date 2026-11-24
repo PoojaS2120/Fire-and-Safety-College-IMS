@@ -930,7 +930,96 @@ const fetchAdmissionFormData = async (id) => {
     admission_form: student.admission_form || {},
   };
 };
+// GET ADMISSION FORM IMAGE
+exports.getAdmissionFormImage = async (req, res, next) => {
+  try {
+    const { id, imageType } = req.params;
 
+    const imageFolders = {
+      student_photo: 'student-photos',
+      student_signature: 'student-signatures',
+      parent_signature: 'parent-signatures',
+    };
+
+    const expectedFolder = imageFolders[imageType];
+
+    if (!expectedFolder) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid image type.',
+      });
+    }
+
+    // Fetch the converted student's admission form.
+    const data = await fetchAdmissionFormData(id);
+    const image = data.admission_form?.images?.[imageType];
+
+    if (!image?.file_path) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admission form image not found.',
+      });
+    }
+
+    // Validate the stored relative path.
+    const normalizedPath = image.file_path.replace(/\\/g, '/');
+    const pathParts = normalizedPath.split('/');
+
+    if (
+      pathParts.length !== 2 ||
+      pathParts[0] !== expectedFolder ||
+      !pathParts[1] ||
+      path.posix.basename(pathParts[1]) !== pathParts[1]
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid stored image path.',
+      });
+    }
+
+    // Resolve and verify that the image stays inside its expected folder.
+    const baseDir = path.resolve(uploadDir, expectedFolder);
+    const filePath = path.resolve(baseDir, pathParts[1]);
+
+    if (path.dirname(filePath) !== baseDir) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid image path.',
+      });
+    }
+
+    await fs.access(filePath);
+
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Content-Disposition': 'inline',
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+
+    return res.sendFile(filePath, (error) => {
+      if (error && !res.headersSent) {
+        next(error);
+      }
+    });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({
+        success: false,
+        message: 'Stored admission image is missing.',
+      });
+    }
+
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    next(error);
+  }
+};
 
 // GET CONVERTED STUDENT ADMISSION FORM
 exports.getAdmissionForm = async (req, res, next) => {
