@@ -1075,7 +1075,7 @@ exports.recordPayment = async (
       }
 
       const pendingFees = await StudentFee.find(feeFilter)
-        .sort({ createdAt: 1, _id: 1 })
+        .sort({ due_date: 1, installment_number: 1, createdAt: 1, _id: 1 })
         .session(session);
 
       if (pendingFees.length === 0) {

@@ -1,4 +1,3 @@
-
 const express = require('express');
 const router = express.Router();
 
@@ -51,6 +50,14 @@ router.post(
   verifyToken,
   authorize('super_admin', 'office_staff'),
   feeController.recordPayment
+);
+
+// Payment history of one student (includes cancelled payments)
+router.get(
+  '/payments/student/:studentId',
+  verifyToken,
+  authorize('super_admin', 'office_staff'),
+  feeController.getStudentPayments
 );
 
 // Receipt JSON
