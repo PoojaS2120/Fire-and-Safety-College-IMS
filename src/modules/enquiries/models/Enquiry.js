@@ -300,11 +300,11 @@ const enquirySchema = new mongoose.Schema(
       default: null,
     },
 
-    created_by: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
+created_by: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'User',
+  default: null,
+},
   },
   { timestamps: true }
 );
