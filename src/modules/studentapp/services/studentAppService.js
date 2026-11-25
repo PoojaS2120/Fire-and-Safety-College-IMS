@@ -22,13 +22,22 @@ const createError = (message, statusCode = 400) => {
   return error;
 };
 
+// change done by sakshi 24 nov
 // Always resolve the student from the authenticated user.
 // Never accept a student ID from the Android app.
+// const getAuthenticatedStudent = async (userId) => {
+//   const student = await Student.findOne({ user_id: userId })
+//     .populate('course_id', 'name duration description status')
+//     .populate('batch_id', 'name start_date end_date status');
+
 const getAuthenticatedStudent = async (userId) => {
+  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+    throw createError('Invalid user identity.', 401);
+  }
+
   const student = await Student.findOne({ user_id: userId })
     .populate('course_id', 'name duration description status')
     .populate('batch_id', 'name start_date end_date status');
-
   if (!student) {
     throw createError('Student profile not found.', 404);
   }

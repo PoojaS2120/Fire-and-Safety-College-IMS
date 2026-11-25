@@ -258,16 +258,16 @@ const enquirySchema = new mongoose.Schema(
       default: null,
     },
 
-    // Signatures
-    authorized_sign: {
-      type: String,
-      default: null,
-    },
+    
+    // authorized_sign: {
+    //   type: String,
+    //   default: null,
+    // },
 
-    applicant_signature: {
-      type: String,
-      default: null,
-    },
+    // applicant_signature: {
+    //   type: String,
+    //   default: null,
+    // },
 
     // Existing enquiry management fields
     source: {
@@ -278,7 +278,12 @@ const enquirySchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ['new', 'contacted', 'interested', 'converted', 'closed'],
+      enum: [
+  'new',
+  'interested',
+  'not_interested',
+  'follow_up',
+],
       default: 'new',
       required: true,
     },

@@ -1468,11 +1468,11 @@ exports.getLibraryIssuesReport = async (query = {}) => {
 exports.getCombinedReportsReport = async (query = {}) => {
   const combinedWorkbook = XLSX.utils.book_new();
 
+  // Existing reports (Enquiries report is replaced by 3 status-wise sheets)
   const reportTasks = [
     () => exports.getFeeCollectionReport(query),
     () => exports.getPendingFeesReport(query),
     () => exports.getAdmissionsReport(query),
-    () => exports.getEnquiriesReport(query),
     () => exports.getStudentsReport(query),
     () => exports.getReceiptsReport(query),
     () => exports.getExamFormsReport(query),
@@ -1486,6 +1486,7 @@ exports.getCombinedReportsReport = async (query = {}) => {
     () => exports.getLibraryIssuesReport(query),
   ];
 
+  // Generate and append existing reports
   for (const generateReport of reportTasks) {
     const reportWorkbook = await generateReport();
 
@@ -1500,6 +1501,83 @@ exports.getCombinedReportsReport = async (query = {}) => {
       combinedWorkbook,
       worksheet,
       sheetName
+    );
+  }
+
+  // Enquiry status-wise worksheets
+  const enquiryStatuses = [
+    {
+      status: 'interested',
+      sheetName: 'Interested',
+    },
+    {
+      status: 'not_interested',
+      sheetName: 'Not Interested',
+    },
+    {
+      status: 'follow_up',
+      sheetName: 'Follow Up',
+    },
+  ];
+
+  // Common enquiry filters
+const enquiryFilter = {
+  converted_student_id: null,
+  ...buildDateFilter(query, 'createdAt'),
+};
+
+  validateObjectId(query.courseId, 'courseId');
+
+  if (query.courseId) {
+    enquiryFilter.course_interest_id = query.courseId;
+  }
+
+  // Common Excel columns for all enquiry worksheets
+  const enquiryColumns = [
+    { header: 'Name', key: 'Name', width: 25 },
+    { header: 'Phone', key: 'Phone', width: 15 },
+    { header: 'Course Interest', key: 'Course', width: 20 },
+    { header: 'Source', key: 'Source', width: 15 },
+    { header: 'Status', key: 'Status', width: 18 },
+    { header: 'Date', key: 'Date', width: 15 },
+  ];
+
+  // Generate each enquiry status worksheet
+  for (const item of enquiryStatuses) {
+    const enquiries = await Enquiry.find({
+      ...enquiryFilter,
+      status: item.status,
+    })
+      .populate('course_interest_id', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const data = enquiries.map((enquiry) => ({
+      Name: enquiry.name || '',
+      Phone: enquiry.phone || '',
+      Course: enquiry.course_interest_id?.name || 'N/A',
+      Source: enquiry.source || 'N/A',
+      Status: enquiry.status
+        ? enquiry.status.toUpperCase()
+        : '',
+      Date: enquiry.createdAt
+        ? new Date(enquiry.createdAt).toLocaleDateString()
+        : '',
+    }));
+
+    const enquiryWorkbook = generateWorkbook(
+      data,
+      enquiryColumns,
+      item.sheetName
+    );
+
+    const worksheet =
+      enquiryWorkbook.Sheets[item.sheetName];
+
+    XLSX.utils.book_append_sheet(
+      combinedWorkbook,
+      worksheet,
+      item.sheetName
     );
   }
 

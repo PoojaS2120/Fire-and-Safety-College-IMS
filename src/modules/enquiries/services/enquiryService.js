@@ -528,7 +528,9 @@ exports.getEnquiries = async (query) => {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 10));
 
-  const filter = {};
+const filter = {
+  converted_student_id: null,
+};
 
   if (query.status) {
     filter.status = query.status;
@@ -612,11 +614,35 @@ exports.createEnquiry = async (enquiryData, userId) => {
 
 // ENQUIRY SUMMARY
 exports.getEnquirySummary = async () => {
-  const statuses = ['new', 'contacted', 'interested', 'converted', 'closed'];
-  const counts = await Enquiry.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]);
-  
-  const summary = { total: 0, new: 0, contacted: 0, interested: 0, converted: 0, closed: 0 };
-  
+  const statuses = [
+    'new',
+    'interested',
+    'not_interested',
+    'follow_up',
+  ];
+
+  const counts = await Enquiry.aggregate([
+    {
+      $match: {
+        converted_student_id: null,
+      },
+    },
+    {
+      $group: {
+        _id: '$status',
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const summary = {
+    total: 0,
+    new: 0,
+    interested: 0,
+    not_interested: 0,
+    follow_up: 0,
+  };
+
   counts.forEach(({ _id, count }) => {
     if (statuses.includes(_id)) {
       summary[_id] = count;
@@ -642,7 +668,7 @@ exports.getEnquiryById = async (id) => {
 exports.updateEnquiry = async (id, updateData) => {
   const enquiry = await Enquiry.findById(id);
   if (!enquiry) throw createError(404, 'Enquiry not found.');
-  if (enquiry.status === 'converted') throw createError(400, 'Converted enquiries cannot be edited.');
+  if (enquiry.converted_student_id) throw createError(400, 'Converted enquiries cannot be edited.');
 
   if (updateData.course_interest_id) {
     const course = await Course.findById(updateData.course_interest_id);
@@ -694,7 +720,7 @@ exports.getAdmissionPrefill = async (id) => {
 
   const enquiry = await Enquiry.findById(id).populate('course_interest_id', 'name duration status').lean();
   if (!enquiry) throw createError(404, 'Enquiry not found.');
-  if (enquiry.status === 'converted' || enquiry.converted_student_id) throw createError(409, 'This enquiry has already been converted.');
+ if (enquiry.converted_student_id)throw createError(409, 'This enquiry has already been converted.');
 
   const primaryPhone = enquiry.phone || enquiry.mobile || enquiry.phone_tel || '';
   

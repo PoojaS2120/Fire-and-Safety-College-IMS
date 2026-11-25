@@ -781,13 +781,22 @@ const validateId = (id, fieldName = 'ID') => {
     throw createError(`Invalid ${fieldName}.`, 400);
   }
 };
+// change did by sakshi 24nov 
+// const getStudent = async (userId) => {
+//   const student = await Student.findOne({
+//     user_id: userId,
+//     status: 'active',
+//   }).select('student_id full_name course_id batch_id');
 
 const getStudent = async (userId) => {
+  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+    throw createError('Invalid user identity.', 401);
+  }
+
   const student = await Student.findOne({
     user_id: userId,
     status: 'active',
   }).select('student_id full_name course_id batch_id');
-
   if (!student) {
     throw createError('Active student profile not found.', 404);
   }
@@ -952,8 +961,16 @@ exports.getMaterials = async (filters, user) => {
   }
 
   // Student scope
+  //changes done by sakshi 24 nov
   if (user.role === 'student') {
     const student = await getStudent(user.id);
+
+    // If the student isn't placed in a course/batch yet, return nothing
+    // rather than throwing — the APK should show an empty list.
+    if (!student.course_id || !student.batch_id) {
+      return [];
+    }
+
     query.course_id = student.course_id;
     query.batch_id = student.batch_id;
   }
@@ -1288,14 +1305,32 @@ exports.createStudentWatermarkedFile = async (
         maxBuffer: 10 * 1024 * 1024,
       });
     }
+     
+    //changes done by sakshi 24nov
+    
+    // else {
+    //   const error = createError(
+    //     `Watermark processing is not implemented yet for ${extension}.`,
+    //     501
+    //   );
 
+
+    //   throw error;
+    // }
+
+    // return {
+
+        // OFFICE DOCUMENTS (PPT, PPTX, DOC, DOCX)
+    else if (['.ppt', '.pptx', '.doc', '.docx'].includes(extension)) {
+      return {
+        filePath: filePath,
+        cleanup: async () => {},
+      };
+    }
+
+    // Fallback for any other unsupported extensions
     else {
-      const error = createError(
-        `Watermark processing is not implemented yet for ${extension}.`,
-        501
-      );
-
-      throw error;
+      throw createError(`Unsupported file format for download: ${extension}`, 400);
     }
 
     return {
