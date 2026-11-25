@@ -43,12 +43,15 @@ app.use('/api/v1/auth', require('./modules/auth/routes/authRoutes'));
 
 // USERS
 app.use('/api/v1/users', require('./modules/users/routes/userRoutes'));
-
 // CORE
 app.use('/api/v1/courses', require('./modules/courses/routes/courseRoutes'));
-app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
 app.use('/api/v1/uploads', require('./modules/uploads/routes/uploadRoutes'));
 
+// PUBLIC ENQUIRY FORM (No JWT / RBAC)
+app.use(
+  '/api/v1/public/enquiries',
+  require('./modules/enquiries/routes/publicEnquiryRoutes')
+);
 app.use(
   '/api/v1/faculty-assignments',
   require('./modules/faculty/routes/facultyRoutes')

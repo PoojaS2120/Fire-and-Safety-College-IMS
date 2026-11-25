@@ -299,6 +299,7 @@ const enquirySchema = new mongoose.Schema(
       ref: 'Student',
       default: null,
     },
+
     // Add inside enquirySchema
   group_members: [
   {
@@ -311,6 +312,14 @@ const enquirySchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+
+
+created_by: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'User',
+  default: null,
+},
+
   },
   { timestamps: true }
 );

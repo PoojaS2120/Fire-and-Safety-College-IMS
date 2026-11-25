@@ -1,4 +1,3 @@
-
 const Joi = require('joi');
 
 const phonePattern = /^[0-9+\-\s()]{7,15}$/;
