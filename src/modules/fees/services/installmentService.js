@@ -5,7 +5,7 @@ const FeeComponent = require('../../courses/models/FeeComponent');
 const ConcessionMaster = require('../models/ConcessionMaster');
 const auditService = require('../../audit/services/auditService');
 
-const MAX_INSTALLMENTS = 12;
+const MAX_INSTALLMENTS = 4;
 
 // ----------------------------------------------------------------
 // Helpers
@@ -18,11 +18,6 @@ const createError = (statusCode, message) => {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-/**
- * Split `total` by `weights` so the parts add up to EXACTLY `total`.
- * The last part takes the rounding remainder.
- * If every weight is 0 the split is equal.
- */
 const distribute = (total, weights) => {
   const n = weights.length;
   const totalP = Math.round(total * 100);
@@ -76,10 +71,7 @@ const todayUTC = () => {
 };
 
 // ----------------------------------------------------------------
-// Build + validate the payment schedule the super admin chose
-//   Option 1:  options.installments = [{ due_date, amount }, ...]   (custom)
-//   Option 2:  options.number_of_installments + options.start_date  (equal split, monthly)
-//   1 installment = one-time payment
+// Build + validate the payment schedule
 // ----------------------------------------------------------------
 const buildSchedule = (options, grossTotal) => {
   if (Array.isArray(options.installments) && options.installments.length > 0) {
@@ -101,38 +93,37 @@ const buildSchedule = (options, grossTotal) => {
 
     for (let i = 1; i < schedule.length; i++) {
       if (schedule[i].due_date <= schedule[i - 1].due_date) {
-        throw createError(400, `Installment ${i + 1} must be due after installment ${i}.`);
+        throw createError(400, `Installment ${i + 1}: due date must be after installment ${i}.`);
       }
     }
+
     const sum = round2(schedule.reduce((s, r) => s + r.amount, 0));
     if (Math.abs(sum - grossTotal) > 0.01) {
       throw createError(
         400,
-        `Installment amounts add up to ${sum} but the course fee is ${grossTotal}. They must match.`
+        `Installment amounts (${sum}) must equal the total (${grossTotal}).`
       );
     }
     return schedule;
   }
 
-  const n = options.number_of_installments ? Number(options.number_of_installments) : 1;
-  if (!Number.isInteger(n) || n < 1 || n > MAX_INSTALLMENTS) {
-    throw createError(400, `Number of installments must be between 1 and ${MAX_INSTALLMENTS}.`);
-  }
+  const n = Math.max(1, Math.min(MAX_INSTALLMENTS, parseInt(options.number_of_installments, 10) || 1));
   const start = options.start_date ? new Date(options.start_date) : todayUTC();
-  if (Number.isNaN(start.getTime())) throw createError(400, 'Invalid start_date.');
+  if (Number.isNaN(start.getTime())) {
+    throw createError(400, 'start_date is invalid.');
+  }
 
-  const amounts = distribute(grossTotal, Array(n).fill(1));
-  return amounts.map((amount, i) => ({ due_date: addMonthsUTC(start, i), amount }));
+  const amounts = distribute(grossTotal, new Array(n).fill(1));
+  const schedule = [];
+  for (let i = 0; i < n; i++) {
+    schedule.push({ due_date: addMonthsUTC(start, i), amount: amounts[i] });
+  }
+  return schedule;
 };
 
-// ================================================================
-// A. SET PAYMENT PLAN  (one-time OR installments)
-//    - Replaces the student's UNPAID fee rows for this course
-//    - Every fee component gets one row per installment
-//    - Each installment's amount is shared across the components in the
-//      same proportion as the installment amount the super admin typed
-//    - Keeps the student's concession (if any)
-// ================================================================
+// ----------------------------------------------------------------
+// Generate installments for one student
+// ----------------------------------------------------------------
 exports.generateWithInstallments = async (
   studentId,
   courseId,
@@ -140,229 +131,300 @@ exports.generateWithInstallments = async (
   adminId = null,
   ip = null
 ) => {
-  if (!mongoose.Types.ObjectId.isValid(studentId)) throw createError(400, 'Invalid student ID.');
-  if (!mongoose.Types.ObjectId.isValid(courseId)) throw createError(400, 'Invalid course ID.');
+  if (!mongoose.Types.ObjectId.isValid(studentId)) {
+    throw createError(400, 'Invalid student ID.');
+  }
+  if (!mongoose.Types.ObjectId.isValid(courseId)) {
+    throw createError(400, 'Invalid course ID.');
+  }
 
   const student = await Student.findById(studentId);
   if (!student) throw createError(404, 'Student not found.');
 
-  const components = await FeeComponent.find({ course_id: courseId, status: 'active' });
-  if (components.length === 0) {
-    throw createError(400, 'No active fee components found for this course.');
+  // 🚨 GATEKEEPER RULE: Ensure they are in the 'fees' stage
+  if (student.lifecycle_stage === 'admission' || student.lifecycle_stage === 'documents') {
+    throw createError(400, 'Please complete the admission process and move the student to the "Fees" stage first.');
   }
 
-  const grossTotal = round2(components.reduce((s, c) => s + Number(c.amount || 0), 0));
-  const schedule = buildSchedule(options, grossTotal);
-  const total = schedule.length;
+  const components = await FeeComponent.find({
+    course_id: courseId,
+    status: 'active',
+  });
 
-  const alreadyPaid = await StudentFee.exists({
+  if (components.length === 0) {
+    throw createError(400, 'No active fee components for this course.');
+  }
+
+  // 🚨 THE FIX: Delete the existing 1-time fee rows before creating installments
+  await StudentFee.deleteMany({
     student_id: studentId,
     course_id: courseId,
-    amount_paid: { $gt: 0 },
+    total_installments: 1 // Only delete the base 1-time fees
   });
-  if (alreadyPaid) {
-    throw createError(
-      400,
-      'A payment has already been recorded for this student. The payment plan cannot be changed. Cancel the payments first.'
-    );
-  }
 
-  // Keep the concession the student already has
   let concession = null;
-  if (student.concession_id) {
-    concession = await ConcessionMaster.findById(student.concession_id);
+  if (options.concession_id) {
+    if (!mongoose.Types.ObjectId.isValid(options.concession_id)) {
+      throw createError(400, 'Invalid concession ID.');
+    }
+    concession = await ConcessionMaster.findById(options.concession_id);
+    if (!concession || concession.status !== 'active') {
+      throw createError(404, 'Concession not found or inactive.');
+    }
   }
 
-  const weights = schedule.map((s) => s.amount);
-  const rows = [];
+  // Build rows grouped per component
+  const allRows = [];
 
   for (const comp of components) {
-    const applicable = isApplicable(concession, comp._id);
-    const fullConcession = applicable ? computeConcessionAmount(comp.amount, concession) : 0;
-    const net = round2(comp.amount - fullConcession);
-    const parts = distribute(net, weights);
+    // Base amount (full fee for this component)
+    const baseAmount = round2(Number(comp.amount));
 
-    for (let i = 0; i < total; i++) {
-      rows.push({
+    // Concession for this component (if applicable)
+    const concessionAmount = isApplicable(concession, comp._id)
+      ? computeConcessionAmount(baseAmount, concession)
+      : 0;
+
+    // Net total after concession
+    const netTotal = round2(baseAmount - concessionAmount);
+
+    // Build schedule
+    const schedule = buildSchedule(options, netTotal);
+
+    // Create one row per installment
+    schedule.forEach((s, idx) => {
+      allRows.push({
         student_id: studentId,
         course_id: courseId,
         fee_component_id: comp._id,
         fee_name: comp.name,
-        original_amount: i === 0 ? comp.amount : 0,
-        concession_id: applicable ? concession._id : null,
-        concession_amount: i === 0 ? fullConcession : 0,
-        concession_reason: applicable && i === 0 ? concession.name : null,
-        amount_due: parts[i],
+
+        // Only store original/concession ON INSTALLMENT 1 (keep later rows 0)
+        original_amount: idx === 0 ? baseAmount : 0,
+        concession_id: idx === 0 ? (concession ? concession._id : null) : null,
+        concession_amount: idx === 0 ? concessionAmount : 0,
+        concession_reason: idx === 0 ? (concession ? concession.name : null) : null,
+
+        amount_due: s.amount,
         amount_paid: 0,
-        installment_number: i + 1,
-        total_installments: total,
-        due_date: schedule[i].due_date,
+
+        installment_number: idx + 1,
+        total_installments: schedule.length,
+
+        due_date: s.due_date,
         required_for_exam: comp.required_for_exam,
-        status: parts[i] <= 0 ? 'paid' : 'pending',
-        updated_by: adminId,
+        status: 'pending',
       });
-    }
-  }
-
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(async () => {
-      await StudentFee.deleteMany({ student_id: studentId, course_id: courseId }, { session });
-      await StudentFee.insertMany(rows, { session });
     });
-  } finally {
-    await session.endSession();
   }
 
+  await StudentFee.insertMany(allRows);
+
+  // Audit log
   if (adminId) {
     await auditService.logAction({
       userId: adminId,
-      action: 'SET_PAYMENT_PLAN',
+      action: 'GENERATE_FEE_LEDGER',
       entity: 'StudentFee',
-      entityId: student._id,
+      entityId: studentId,
+      oldValues: null,
       newValues: {
+        student_id: studentId,
         course_id: courseId,
-        mode: total === 1 ? 'one_time' : 'installments',
-        installments: schedule.map((s, i) => ({
-          no: i + 1,
-          due_date: s.due_date,
-          amount: s.amount,
-        })),
+        total_rows: allRows.length,
+        concession_id: concession ? concession._id : null,
       },
       ip,
     });
   }
 
   return StudentFee.find({ student_id: studentId, course_id: courseId })
-    .populate('fee_component_id', 'name')
+    .sort({ fee_component_id: 1, installment_number: 1 });
+};
+
+// ----------------------------------------------------------------
+// Summary — reads original/concession from installment 1 only
+// ----------------------------------------------------------------
+exports.getInstallmentSummary = async (studentId) => {
+  if (!mongoose.Types.ObjectId.isValid(studentId)) {
+    throw createError(400, 'Invalid student ID.');
+  }
+
+  const fees = await StudentFee.find({ student_id: studentId })
+    .populate('course_id', 'name')
     .populate('concession_id', 'name code')
-    .sort({ installment_number: 1, fee_component_id: 1 });
-};
+    .sort({ fee_component_id: 1, installment_number: 1 });
 
-// ----------------------------------------------------------------
-// Re-calculate a student's UNPAID fee rows for a concession (or none).
-// Keeps the installment dates and the installment proportions.
-// ----------------------------------------------------------------
-const rescaleStudentFees = async (studentId, concession, adminId) => {
-  const fees = await StudentFee.find({ student_id: studentId });
-
-  const byComponent = {};
-  for (const fee of fees) {
-    const k = `${fee.course_id}_${fee.fee_component_id}`;
-    (byComponent[k] = byComponent[k] || []).push(fee);
+  if (!fees || fees.length === 0) {
+    throw createError(404, 'No fee records found for this student.');
   }
 
-  let updated = 0;
-  for (const rows of Object.values(byComponent)) {
-    rows.sort((a, b) => a.installment_number - b.installment_number);
-    const componentId = rows[0].fee_component_id;
-
-    // Full fee of this component (stored on installment 1; older rows: sum of rows)
-    const fullOriginal =
-      rows[0].original_amount > 0
-        ? rows[0].original_amount
-        : round2(rows.reduce((s, r) => s + r.amount_due, 0));
-
-    const applicable = isApplicable(concession, componentId);
-    const fullConcession = applicable ? computeConcessionAmount(fullOriginal, concession) : 0;
-    const net = round2(fullOriginal - fullConcession);
-    const parts = distribute(net, rows.map((r) => r.amount_due));
-
-    for (let i = 0; i < rows.length; i++) {
-      const fee = rows[i];
-      const first = i === 0;
-      fee.original_amount = first ? fullOriginal : 0;
-      fee.concession_id = applicable ? concession._id : null;
-      fee.concession_amount = first ? fullConcession : 0;
-      fee.concession_reason = applicable && first ? concession.name : null;
-      fee.amount_due = parts[i];
-      fee.status = statusFor(fee.amount_due, fee.amount_paid);
-      fee.updated_by = adminId;
-      await fee.save();
-      updated++;
+  // Group by component
+  const grouped = {};
+  fees.forEach((fee) => {
+    const key = String(fee.fee_component_id);
+    if (!grouped[key]) {
+      grouped[key] = {
+        fee_component_id: fee.fee_component_id,
+        fee_name: fee.fee_name,
+        course: fee.course_id ? fee.course_id.name : null,
+        original_amount: 0,
+        concession_amount: 0,
+        concession_name: null,
+        total_installments: fee.total_installments,
+        installments: [],
+      };
     }
+
+    // original/concession stored on installment 1 only
+    if (fee.installment_number === 1) {
+      grouped[key].original_amount = fee.original_amount || 0;
+      grouped[key].concession_amount = fee.concession_amount || 0;
+      grouped[key].concession_name = fee.concession_id ? fee.concession_id.name : null;
+    }
+
+    grouped[key].installments.push({
+      _id: fee._id,
+      installment_number: fee.installment_number,
+      amount_due: fee.amount_due,
+      amount_paid: fee.amount_paid,
+      balance: Math.max(0, round2(fee.amount_due - fee.amount_paid)),
+      due_date: fee.due_date,
+      status: fee.status,
+      required_for_exam: fee.required_for_exam,
+    });
+  });
+
+  // Totals across all components
+  let totalOriginal = 0;
+  let totalConcession = 0;
+  let totalDue = 0;
+  let totalPaid = 0;
+
+  const componentSummaries = Object.values(grouped).map((c) => {
+    const cDue = c.installments.reduce((s, i) => s + i.amount_due, 0);
+    const cPaid = c.installments.reduce((s, i) => s + i.amount_paid, 0);
+    const cBalance = Math.max(0, round2(cDue - cPaid));
+
+    totalOriginal += c.original_amount;
+    totalConcession += c.concession_amount;
+    totalDue += cDue;
+    totalPaid += cPaid;
+
+    return {
+      ...c,
+      component_due: round2(cDue),
+      component_paid: round2(cPaid),
+      component_balance: cBalance,
+    };
+  });
+
+  return {
+    student_id: studentId,
+    totals: {
+      original: round2(totalOriginal),
+      concession: round2(totalConcession),
+      due: round2(totalDue),
+      paid: round2(totalPaid),
+      balance: Math.max(0, round2(totalDue - totalPaid)),
+    },
+    components: componentSummaries,
+  };
+};
+
+// ----------------------------------------------------------------
+// Apply concession to ONE student
+// ----------------------------------------------------------------
+exports.applyConcession = async (studentId, concessionId, adminId, ip = null) => {
+  if (!mongoose.Types.ObjectId.isValid(studentId)) {
+    throw createError(400, 'Invalid student ID.');
   }
-  return updated;
-};
-
-const assertNoPayments = async (studentId, message) => {
-  const paid = await StudentFee.exists({ student_id: studentId, amount_paid: { $gt: 0 } });
-  if (paid) throw createError(400, message);
-};
-
-const loadActiveConcession = async (concessionId) => {
   if (!mongoose.Types.ObjectId.isValid(concessionId)) {
     throw createError(400, 'Invalid concession ID.');
   }
-  const concession = await ConcessionMaster.findById(concessionId);
-  if (!concession || concession.status !== 'active') {
-    throw createError(404, 'Concession not found or inactive.');
-  }
-  return concession;
-};
-
-const concessionInfo = (c) => ({ id: c._id, name: c.name, type: c.type, value: c.value });
-
-// Rules that depend on the student, not the group
-const assertStudentEligible = (student, concession) => {
-  if (concession.concession_type === 'old_student' && student.admission_type !== 'old') {
-    throw createError(
-      400,
-      `${student.full_name || 'This student'} is not an old student. The Old Student concession is only for re-enrolling students.`
-    );
-  }
-};
-
-// ================================================================
-// B. APPLY CONCESSION TO ONE STUDENT
-//    - old_student : student must be an old (re-enrolling) student
-//    - group       : use the group apply (needs min_students together)
-// ================================================================
-exports.applyConcession = async (studentId, concessionId, adminId, ip = null) => {
-  if (!mongoose.Types.ObjectId.isValid(studentId)) throw createError(400, 'Invalid student ID.');
 
   const student = await Student.findById(studentId);
   if (!student) throw createError(404, 'Student not found.');
 
-  const concession = await loadActiveConcession(concessionId);
-
-  if (student.concession_id && String(student.concession_id) === String(concessionId)) {
-    return {
-      message: 'Concession is already applied to this student.',
-      concession: concessionInfo(concession),
-      updatedFees: 0,
-    };
+  // 🚨 GATEKEEPER RULE
+  if (student.lifecycle_stage === 'admission' || student.lifecycle_stage === 'documents') {
+    throw createError(400, 'Please complete the admission process and move the student to the "Fees" stage first.');
   }
 
-  if (concession.concession_type === 'group') {
-    // Already part of a group that met the minimum? (kept for older data)
-    const others = await Student.countDocuments({
-      course_id: student.course_id,
-      batch_id: student.batch_id,
-      concession_id: concessionId,
-      status: 'active',
-      _id: { $ne: student._id },
+  const concession = await ConcessionMaster.findById(concessionId);
+  if (!concession || concession.status !== 'active') {
+    throw createError(404, 'Concession not found or inactive.');
+  }
+
+  // Old-student check
+  if (concession.concession_type === 'old_student' && student.admission_type !== 'old') {
+    throw createError(400, 'Old Student concession can only be applied to re-enrolling students.');
+  }
+
+  // Block if any payment is made
+  const paid = await StudentFee.findOne({ student_id: studentId, amount_paid: { $gt: 0 } });
+  if (paid) {
+    throw createError(400, 'Cannot apply concession after payment has been made.');
+  }
+
+  // Fetch pending fees grouped by component
+  const fees = await StudentFee.find({
+    student_id: studentId,
+    status: { $in: ['pending', 'partial'] },
+  }).sort({ fee_component_id: 1, installment_number: 1 });
+
+  if (fees.length === 0) {
+    throw createError(400, 'No pending fees to apply concession to.');
+  }
+
+  // Group by component
+  const grouped = {};
+  fees.forEach((f) => {
+    const key = String(f.fee_component_id);
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(f);
+  });
+
+  // Apply concession per component
+  let updatedCount = 0;
+
+  for (const [compId, rows] of Object.entries(grouped)) {
+    if (!isApplicable(concession, compId)) continue;
+
+    const first = rows[0];
+
+    // Base (original) amount = amount_due on installment 1 * total_installments
+    const baseAmount = round2(first.amount_due * first.total_installments);
+
+    // Compute concession for this component
+    const concessionAmount = computeConcessionAmount(baseAmount, concession);
+    const netTotal = round2(baseAmount - concessionAmount);
+
+    // Distribute net across installments
+    const weights = rows.map((r) => r.amount_due);
+    const newAmounts = distribute(netTotal, weights);
+
+    // Apply new amounts
+    rows.forEach((r, idx) => {
+      r.amount_due = newAmounts[idx];
+      r.status = statusFor(r.amount_due, r.amount_paid);
+      r.updated_by = adminId;
+
+      // Store original/concession on installment 1 only
+      if (r.installment_number === 1) {
+        r.original_amount = baseAmount;
+        r.concession_id = concession._id;
+        r.concession_amount = concessionAmount;
+        r.concession_reason = concession.name;
+      }
+
+      updatedCount++;
     });
-    if (others < concession.min_students - 1) {
-      throw createError(
-        400,
-        `Group concession needs at least ${concession.min_students} students together. Select all the group students and apply it to them at once.`
-      );
-    }
+
+    await Promise.all(rows.map((r) => r.save()));
   }
 
-  assertStudentEligible(student, concession);
-  await assertNoPayments(
-    student._id,
-    'Cannot change the concession after a payment has been made. Cancel the payments first.'
-  );
-
-  const hasFees = await StudentFee.exists({ student_id: studentId });
-  if (!hasFees) throw createError(400, 'Set the payment plan for this student first.');
-
-  const prevConcessionId = student.concession_id;
-  const updated = await rescaleStudentFees(student._id, concession, adminId);
-
+  // Update student record
   student.concession_id = concession._id;
   student.concession_applied_at = new Date();
   student.concession_applied_by = adminId;
@@ -372,112 +434,137 @@ exports.applyConcession = async (studentId, concessionId, adminId, ip = null) =>
     userId: adminId,
     action: 'APPLY_CONCESSION',
     entity: 'Student',
-    entityId: student._id,
-    oldValues: { concession_id: prevConcessionId },
+    entityId: studentId,
+    oldValues: null,
     newValues: {
       concession_id: concession._id,
       concession_name: concession.name,
-      updated_fees: updated,
+      updated_rows: updatedCount,
     },
     ip,
   });
 
   return {
     message: `Concession "${concession.name}" applied successfully.`,
-    concession: concessionInfo(concession),
-    updatedFees: updated,
+    concession: {
+      id: concession._id,
+      name: concession.name,
+      type: concession.type,
+      value: concession.value,
+    },
+    updated_installments: updatedCount,
   };
 };
 
-// ================================================================
-// B2. APPLY A GROUP CONCESSION TO SEVERAL STUDENTS AT ONCE
-//     body: { concession_id, student_ids: [...] }
-//     - at least min_students students
-//     - all in the same course and batch
-//     - all-or-nothing: if one student fails the rules nobody gets it
-// ================================================================
-exports.applyGroupConcession = async (concessionId, studentIds, adminId, ip = null) => {
-  const concession = await loadActiveConcession(concessionId);
-  if (concession.concession_type !== 'group') {
-    throw createError(400, 'This is not a group concession.');
+// ----------------------------------------------------------------
+// Apply group concession to MANY students
+// ----------------------------------------------------------------
+exports.applyGroupConcession = async (
+  concessionId,
+  studentIds,
+  adminId,
+  ip = null
+) => {
+  if (!mongoose.Types.ObjectId.isValid(concessionId)) {
+    throw createError(400, 'Invalid concession ID.');
+  }
+  if (!Array.isArray(studentIds) || studentIds.length === 0) {
+    throw createError(400, 'student_ids must be a non-empty array.');
   }
 
-  const ids = [...new Set((studentIds || []).map(String))];
-  if (ids.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
-    throw createError(400, 'One or more student IDs are invalid.');
-  }
-  if (ids.length < concession.min_students) {
-    throw createError(
-      400,
-      `Select at least ${concession.min_students} students for this group concession. You selected ${ids.length}.`
-    );
+  const concession = await ConcessionMaster.findById(concessionId);
+  if (!concession || concession.status !== 'active') {
+    throw createError(404, 'Concession not found or inactive.');
   }
 
-  const students = await Student.find({ _id: { $in: ids } });
-  if (students.length !== ids.length) throw createError(404, 'One or more students were not found.');
+  const results = {
+    success: [],
+    failed: [],
+  };
 
-  const first = students[0];
-  for (const s of students) {
-    if (String(s.course_id) !== String(first.course_id) || String(s.batch_id) !== String(first.batch_id)) {
-      throw createError(400, 'All students in a group must be in the same course and batch.');
-    }
-    if (s.status && s.status !== 'active') {
-      throw createError(400, `${s.full_name || 'A student'} is not an active student.`);
-    }
-    await assertNoPayments(
-      s._id,
-      `${s.full_name || 'A student'} has already paid. Cancel the payments first.`
-    );
-    const hasFees = await StudentFee.exists({ student_id: s._id });
-    if (!hasFees) {
-      throw createError(400, `Set the payment plan for ${s.full_name || 'a student'} first.`);
+  for (const sid of studentIds) {
+    try {
+      const r = await exports.applyConcession(sid, concessionId, adminId, ip);
+      results.success.push({ student_id: sid, message: r.message });
+    } catch (err) {
+      results.failed.push({ student_id: sid, error: err.message });
     }
   }
-
-  let updated = 0;
-  for (const s of students) {
-    updated += await rescaleStudentFees(s._id, concession, adminId);
-    s.concession_id = concession._id;
-    s.concession_applied_at = new Date();
-    s.concession_applied_by = adminId;
-    await s.save();
-  }
-
-  await auditService.logAction({
-    userId: adminId,
-    action: 'APPLY_GROUP_CONCESSION',
-    entity: 'ConcessionMaster',
-    entityId: concession._id,
-    newValues: { student_ids: ids, concession_name: concession.name, updated_fees: updated },
-    ip,
-  });
 
   return {
-    message: `Group concession "${concession.name}" applied to ${students.length} students.`,
-    concession: concessionInfo(concession),
-    updatedFees: updated,
-    students: students.length,
+    message: `Applied to ${results.success.length} student(s). Failed: ${results.failed.length}.`,
+    concession: {
+      id: concession._id,
+      name: concession.name,
+    },
+    results,
   };
 };
 
-// ================================================================
-// C. REMOVE CONCESSION
-// ================================================================
+// ----------------------------------------------------------------
+// Remove concession
+// ----------------------------------------------------------------
 exports.removeConcession = async (studentId, adminId, ip = null) => {
-  if (!mongoose.Types.ObjectId.isValid(studentId)) throw createError(400, 'Invalid student ID.');
+  if (!mongoose.Types.ObjectId.isValid(studentId)) {
+    throw createError(400, 'Invalid student ID.');
+  }
 
   const student = await Student.findById(studentId);
   if (!student) throw createError(404, 'Student not found.');
-  if (!student.concession_id) return { message: 'No concession applied to this student.' };
 
-  await assertNoPayments(
-    student._id,
-    'Cannot remove the concession after a payment has been made. Cancel the payments first.'
-  );
+  // Block if any payment is made
+  const paid = await StudentFee.findOne({ student_id: studentId, amount_paid: { $gt: 0 } });
+  if (paid) {
+    throw createError(400, 'Cannot remove concession after payment has been made.');
+  }
 
-  const prevConcessionId = student.concession_id;
-  await rescaleStudentFees(student._id, null, adminId);
+  const fees = await StudentFee.find({
+    student_id: studentId,
+    status: { $in: ['pending', 'partial'] },
+  }).sort({ fee_component_id: 1, installment_number: 1 });
 
+  if (fees.length === 0) {
+    throw createError(400, 'No pending fees to remove concession from.');
+  }
+
+  // Group by component
+  const grouped = {};
+  fees.forEach((f) => {
+    const key = String(f.fee_component_id);
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(f);
+  });
+
+  for (const [compId, rows] of Object.entries(grouped)) {
+    const first = rows[0];
+
+    // Base = original_amount stored on installment 1 (or reconstruct if missing)
+    const baseAmount =
+      first.original_amount > 0
+        ? first.original_amount
+        : round2(first.amount_due * first.total_installments);
+
+    // Distribute base back across installments
+    const weights = rows.map((r) => r.amount_due);
+    const newAmounts = distribute(baseAmount, weights);
+
+    rows.forEach((r, idx) => {
+      r.amount_due = newAmounts[idx];
+      r.status = statusFor(r.amount_due, r.amount_paid);
+      r.updated_by = adminId;
+
+      if (r.installment_number === 1) {
+        r.original_amount = 0;
+        r.concession_id = null;
+        r.concession_amount = 0;
+        r.concession_reason = null;
+      }
+    });
+
+    await Promise.all(rows.map((r) => r.save()));
+  }
+
+  // Reset student
   student.concession_id = null;
   student.concession_applied_at = null;
   student.concession_applied_by = null;
@@ -487,160 +574,11 @@ exports.removeConcession = async (studentId, adminId, ip = null) => {
     userId: adminId,
     action: 'REMOVE_CONCESSION',
     entity: 'Student',
-    entityId: student._id,
-    oldValues: { concession_id: prevConcessionId },
-    newValues: { concession_id: null },
+    entityId: studentId,
+    oldValues: null,
+    newValues: null,
     ip,
   });
 
   return { message: 'Concession removed successfully.' };
-};
-
-// ================================================================
-// D. FEE SUMMARY  (what the Fees screens show)
-//    - `installments`  : ONE line per installment (all components added up)
-//    - `fees`          : the same data grouped by fee component
-//    - totals          : original, concession, payable, paid, balance
-// ================================================================
-exports.getInstallmentSummary = async (studentId) => {
-  if (!mongoose.Types.ObjectId.isValid(studentId)) throw createError(400, 'Invalid student ID.');
-
-  const student = await Student.findById(studentId).populate(
-    'concession_id',
-    'name code type value concession_type'
-  );
-  if (!student) throw createError(404, 'Student not found.');
-
-  const fees = await StudentFee.find({ student_id: studentId })
-    .populate('course_id', 'name')
-    .sort({ installment_number: 1, fee_component_id: 1 });
-
-  if (!fees.length) throw createError(404, 'No fee records found for this student.');
-
-  const grouped = {};
-  const byNumber = {};
-  let totalOriginal = 0;
-  let totalConcession = 0;
-  let totalDue = 0;
-  let totalPaid = 0;
-
-  for (const fee of fees) {
-    const key = String(fee.fee_component_id);
-    if (!grouped[key]) {
-      grouped[key] = {
-        fee_component_id: fee.fee_component_id,
-        fee_name: fee.fee_name,
-        original_amount: 0,
-        concession_amount: 0,
-        concession_reason: null,
-        total_installments: fee.total_installments || 1,
-        required_for_exam: fee.required_for_exam,
-        installments: [],
-      };
-    }
-    const g = grouped[key];
-    const no = fee.installment_number || 1;
-
-    if (no === 1) {
-      g.original_amount = fee.original_amount > 0 ? fee.original_amount : fee.amount_due;
-      g.concession_amount = fee.concession_amount || 0;
-      g.concession_reason = fee.concession_reason || null;
-      totalOriginal += g.original_amount;
-      totalConcession += g.concession_amount;
-    }
-
-    g.installments.push({
-      _id: fee._id,
-      installment_number: no,
-      amount_due: fee.amount_due,
-      amount_paid: fee.amount_paid,
-      balance: Math.max(0, round2(fee.amount_due - fee.amount_paid)),
-      due_date: fee.due_date,
-      status: fee.status,
-    });
-
-    // one line per installment number (components added together)
-    if (!byNumber[no]) {
-      byNumber[no] = {
-        _id: `inst-${no}`,
-        installment_number: no,
-        amount_due: 0,
-        amount_paid: 0,
-        due_date: fee.due_date,
-        concession_amount: 0,
-      };
-    }
-    const b = byNumber[no];
-    b.amount_due += fee.amount_due;
-    b.amount_paid += fee.amount_paid;
-    b.concession_amount += fee.concession_amount || 0;
-    if (!b.due_date && fee.due_date) b.due_date = fee.due_date;
-
-    totalDue += fee.amount_due;
-    totalPaid += fee.amount_paid;
-  }
-
-  const installments = Object.values(byNumber)
-    .sort((a, b) => a.installment_number - b.installment_number)
-    .map((b) => {
-      const due = round2(b.amount_due);
-      const paid = round2(b.amount_paid);
-      return {
-        _id: b._id,
-        installment_number: b.installment_number,
-        amount_due: due,
-        amount_paid: paid,
-        balance: Math.max(0, round2(due - paid)),
-        due_date: b.due_date,
-        concession_amount: round2(b.concession_amount),
-        status: statusFor(due, paid),
-      };
-    });
-
-  const c = student.concession_id;
-  const concession = c
-    ? {
-        _id: c._id,
-        id: c._id,
-        name: c.name,
-        code: c.code,
-        type: c.type,
-        value: c.value,
-        concession_type: c.concession_type,
-        applied_at: student.concession_applied_at,
-      }
-    : null;
-
-  const original = round2(totalOriginal);
-  const discount = round2(totalConcession);
-  const payable = round2(totalDue);
-  const paid = round2(totalPaid);
-  const balance = Math.max(0, round2(payable - paid));
-
-  return {
-    student: {
-      _id: student._id,
-      student_id: student.student_id,
-      full_name: student.full_name,
-      admission_type: student.admission_type,
-      concession,
-    },
-    // names the Fees screens read
-    totalDue: payable,
-    totalPaid: paid,
-    balance,
-    discount,
-    grossTotal: original,
-    concession,
-    installments,
-    // grouped + totals (kept for other callers)
-    totals: {
-      originalAmount: original,
-      concessionAmount: discount,
-      finalAmount: payable,
-      paidAmount: paid,
-      balance,
-    },
-    fees: Object.values(grouped),
-  };
 };

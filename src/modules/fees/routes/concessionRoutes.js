@@ -8,27 +8,27 @@ router.use(verifyToken);
 
 router.post(
   '/',
-  authorizeOrPermission('CONCESSIONS_CREATE', 'super_admin'),
+  authorizeOrPermission('fees.concessions.create'),
   concessionController.createConcession
 );
 router.get(
   '/',
-  authorizeOrPermission('CONCESSIONS_VIEW', 'super_admin', 'office_staff'),
+  authorizeOrPermission('fees.concessions.view'),
   concessionController.getConcessions
 );
 router.get(
   '/:id',
-  authorizeOrPermission('CONCESSIONS_VIEW', 'super_admin', 'office_staff'),
+  authorizeOrPermission('fees.concessions.view'),
   concessionController.getConcessionById
 );
 router.put(
   '/:id',
-  authorizeOrPermission('CONCESSIONS_UPDATE', 'super_admin'),
+  authorizeOrPermission('fees.concessions.update'),
   concessionController.updateConcession
 );
 router.delete(
   '/:id',
-  authorizeOrPermission('CONCESSIONS_DELETE', 'super_admin'),
+  authorizeOrPermission('fees.concessions.delete'),
   concessionController.deleteConcession
 );
 
