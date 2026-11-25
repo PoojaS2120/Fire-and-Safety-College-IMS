@@ -152,12 +152,19 @@ exports.downloadStudentDocument = async (req, res, next) => {
 // 4. Verify / receive / reject document
 exports.updateDocumentStatus = async (req, res, next) => {
   try {
-    const { status, remarks } = req.body;
+    const {
+      status,
+      remarks,
+      received_by_name,
+      verified_by_name,
+    } = req.body;
 
     const document = await documentService.updateDocumentStatus({
       documentId: req.params.id,
       status,
       remarks,
+      received_by_name,
+      verified_by_name,
       userId: req.user.id,
       ip: req.ip,
     });

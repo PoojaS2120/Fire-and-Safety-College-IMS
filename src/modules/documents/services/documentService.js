@@ -1,3 +1,4 @@
+
 const mongoose = require('mongoose');
 const fs = require('fs/promises');
 
@@ -27,7 +28,6 @@ exports.uploadStudentDocument = async ({
   const student = await Student.findById(studentId);
 
   if (!student) {
-    // Remove the temporary file if the student does not exist.
     if (file?.path) {
       await fs.unlink(file.path).catch(() => {});
     }
@@ -49,12 +49,10 @@ exports.uploadStudentDocument = async ({
       status: 'pending',
     });
   } catch (error) {
-    // Clean up the Upload record and physical file if document creation fails.
     await uploadService.deleteUpload(upload._id, userId);
     throw error;
   }
 
-  // Audit failure must not delete an already-created document or file.
   await auditService.logAction({
     userId,
     action: 'STUDENT_DOCUMENT_UPLOADED',
@@ -89,6 +87,7 @@ exports.getStudentDocuments = async (studentId) => {
     is_deleted: false,
   })
     .populate('upload_id', 'originalName mimeType size createdAt')
+    .populate('received_by', 'name email role')
     .populate('verified_by', 'name email role')
     .sort({ createdAt: -1 });
 };
@@ -103,6 +102,7 @@ exports.getDocumentById = async (documentId) => {
   })
     .populate('student_id', 'student_id full_name user_id')
     .populate('upload_id', 'originalName storedName mimeType size')
+    .populate('received_by', 'name email role')
     .populate('verified_by', 'name email role');
 
   if (!document) {
@@ -119,10 +119,13 @@ exports.updateDocumentStatus = async ({
   documentId,
   status,
   remarks,
+  received_by_name,
+  verified_by_name,
   userId,
   ip,
 }) => {
   validateObjectId(documentId, 'document ID');
+  validateObjectId(userId, 'user ID');
 
   const allowedStatuses = ['received', 'verified', 'rejected'];
 
@@ -134,6 +137,51 @@ exports.updateDocumentStatus = async ({
     throw error;
   }
 
+  // Validate receiving faculty name.
+  if (status === 'received') {
+    if (
+      typeof received_by_name !== 'string' ||
+      !received_by_name.trim()
+    ) {
+      const error = new Error(
+        'Receiving faculty name is required when receiving a document.'
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (received_by_name.trim().length > 100) {
+      const error = new Error(
+        'Receiving faculty name cannot exceed 100 characters.'
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  // Validate verifying faculty name.
+  if (status === 'verified') {
+    if (
+      typeof verified_by_name !== 'string' ||
+      !verified_by_name.trim()
+    ) {
+      const error = new Error(
+        'Verifying faculty name is required when verifying a document.'
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (verified_by_name.trim().length > 100) {
+      const error = new Error(
+        'Verifying faculty name cannot exceed 100 characters.'
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  // Rejection remarks are mandatory.
   if (
     status === 'rejected' &&
     (typeof remarks !== 'string' || !remarks.trim())
@@ -156,26 +204,45 @@ exports.updateDocumentStatus = async ({
     throw error;
   }
 
+  // Capture existing values before making changes.
   const oldValues = {
     status: document.status,
     remarks: document.remarks,
+    received_by: document.received_by,
+    received_by_name: document.received_by_name,
+    received_at: document.received_at,
     verified_by: document.verified_by,
+    verified_by_name: document.verified_by_name,
     verified_at: document.verified_at,
   };
 
   document.status = status;
-  document.remarks = remarks?.trim() || null;
 
+  // Update remarks only when supplied.
+  if (typeof remarks === 'string') {
+    document.remarks = remarks.trim() || null;
+  }
+
+  // Record receiving user, faculty name and timestamp.
+  if (status === 'received') {
+    document.received_by = userId;
+    document.received_by_name = received_by_name.trim();
+    document.received_at = new Date();
+  }
+
+  // Record verifying user, faculty name and timestamp.
   if (status === 'verified') {
     document.verified_by = userId;
+    document.verified_by_name = verified_by_name.trim();
     document.verified_at = new Date();
-  } else {
-    document.verified_by = null;
-    document.verified_at = null;
   }
+
+  // Do not clear previously recorded receiving or verification details.
+  // This preserves the complete record when status changes to rejected.
 
   await document.save();
 
+  // Audit the complete status and faculty information changes.
   await auditService.logAction({
     userId,
     action: 'STUDENT_DOCUMENT_STATUS_UPDATED',
@@ -185,7 +252,11 @@ exports.updateDocumentStatus = async ({
     newValues: {
       status: document.status,
       remarks: document.remarks,
+      received_by: document.received_by,
+      received_by_name: document.received_by_name,
+      received_at: document.received_at,
       verified_by: document.verified_by,
+      verified_by_name: document.verified_by_name,
       verified_at: document.verified_at,
     },
     ip,
