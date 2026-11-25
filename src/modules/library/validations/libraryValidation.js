@@ -1,4 +1,3 @@
-
 const Joi = require('joi');
 
 const objectId = Joi.string()
@@ -44,5 +43,13 @@ exports.updateStatusSchema = Joi.object({
 exports.issueBookSchema = Joi.object({
   bookId: objectId.required(),
   studentName: Joi.string().trim().min(2).max(150).required(),
+  issuedByName: Joi.string().trim().min(2).max(150).required(), // staff who handed over the book
   dueDate: Joi.date().iso().required()
+});
+
+// ---------- RETURN BOOK ----------
+exports.returnBookSchema = Joi.object({
+  receivedByName: Joi.string().trim().min(2).max(150).required(), // staff who received the book
+  returnedBy: objectId,              // optional, defaults to the borrower
+  returnDate: Joi.date().iso()       // optional, defaults to now
 });
