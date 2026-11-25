@@ -1,7 +1,14 @@
 const mongoose = require('mongoose');
 
 const academicQualificationSchema = new mongoose.Schema(
+  
+
   {
+     level: {
+      type: String,
+      enum: ['10th', '12th_iti', 'diploma_degree', 'other'],
+      default: 'other',
+    },
     examination_passed: {
       type: String,
       trim: true,
@@ -110,11 +117,23 @@ const enquirySchema = new mongoose.Schema(
       maxlength: 150,
     },
 
-    // Complete academic qualification details
+    // // Complete academic qualification details
+    // academic_qualification: {
+    //   type: [academicQualificationSchema],
+    //   default: [],
+    // },
+
     academic_qualification: {
-      type: [academicQualificationSchema],
-      default: [],
+  type: [academicQualificationSchema],
+  default: [],
+  validate: {
+    validator: (rows) => {
+      const fixed = rows.map((r) => r.level).filter((l) => l !== 'other');
+      return rows.length <= 10 && new Set(fixed).size === fixed.length;
     },
+    message: '10th, 12th / ITI and Diploma / Degree can be added only once each.',
+  },
+},
 
     // Physical measurements
     height_cm: {
