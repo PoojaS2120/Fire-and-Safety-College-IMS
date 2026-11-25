@@ -13,6 +13,7 @@
 // const Role = require('../../rbac/models/Role');
 // const StudentFee = require('../../fees/models/StudentFee');
 // const FeeComponent = require('../../courses/models/FeeComponent');
+// const auditService = require('../../audit/services/auditService'); // 🚨 ADDED
 
 // function createError(statusCode, message) {
 //   const err = new Error(message);
@@ -54,7 +55,6 @@
 //   }
 // }
 
-// // Check whether all library books issued to a student have been returned.
 // async function validateBooksReturned(studentId) {
 //   const pendingIssues = await BookIssue.find({
 //     student: studentId,
@@ -81,13 +81,10 @@
 //   }
 // }
 
-// // ================= STUDENT ID GENERATION =================
-// // Shared by regular student creation and direct admission.
 // async function generateStudentId() {
 //   const year = new Date().getFullYear();
 //   const key = `FSC-${year}`;
 
-//   // Find the latest student ID already present in the database.
 //   const lastStudent = await Student.findOne({
 //     student_id: new RegExp(`^FSC-${year}-\\d+$`),
 //   })
@@ -99,14 +96,12 @@
 //     ? parseInt(lastStudent.student_id.split('-').pop(), 10)
 //     : 0;
 
-//   // Synchronize the counter with existing student records.
 //   await StudentIdCounter.updateOne(
 //     { _id: key },
 //     { $max: { sequence: lastSequence } },
 //     { upsert: true }
 //   );
 
-//   // Atomically generate the next student ID.
 //   const counter = await StudentIdCounter.findByIdAndUpdate(
 //     key,
 //     { $inc: { sequence: 1 } },
@@ -119,7 +114,6 @@
 
 //   const studentId = `FSC-${year}-${String(counter.sequence).padStart(4, '0')}`;
 
-//   // Protect against an ID that already exists.
 //   const existingStudent = await Student.findOne({
 //     student_id: studentId,
 //   }).select('_id');
@@ -138,7 +132,7 @@
 // }
 
 // // ================= CREATE =================
-// exports.createStudent = async (data, adminId) => {
+// exports.createStudent = async (data, adminId, ip = null) => { // 🚨 ADDED ip
 //   validateObjectId(adminId, 'creator user ID');
 
 //   const syntheticEmail = `${data.phone}@ims.com`;
@@ -181,6 +175,22 @@
 
 //     await student.save();
 
+//     // 🚨 AUDIT LOG
+//     await auditService.logAction({
+//       userId: adminId,
+//       action: 'CREATE_STUDENT',
+//       entity: 'Student',
+//       entityId: student._id,
+//       oldValues: null,
+//       newValues: {
+//         student_id: student.student_id,
+//         full_name: student.full_name,
+//         phone: student.phone,
+//         course_id: student.course_id,
+//       },
+//       ip,
+//     });
+
 //     return student;
 //   } catch (err) {
 //     await User.findByIdAndDelete(newUser._id);
@@ -205,7 +215,6 @@
 
 //   const filter = {};
 
-//   // Exclude students whose TC has been approved.
 //   const tcApprovedStudentIds = await TcLc.distinct('student_id', {
 //     type: 'TC',
 //     status: 'approved',
@@ -218,14 +227,12 @@
 //   if (stage_status) filter.stage_status = stage_status;
 //   if (courseId) filter.course_id = courseId;
 
-//   // Handle both batchId and batch_id.
 //   const actualBatchId = batchId || batch_id;
 
 //   if (actualBatchId) {
 //     filter.batch_id = actualBatchId;
 //   }
 
-//   // Faculty scope: only students in their assigned batches.
 //   if (user && user.role === 'faculty') {
 //     const assignments = await FacultyAssignment.find({
 //       faculty_id: user.id,
@@ -329,14 +336,16 @@
 // };
 
 // // ================= UPDATE =================
-// exports.updateStudent = async (id, data) => {
+// exports.updateStudent = async (id, data, adminId = null, ip = null) => { // 🚨 ADDED params
 //   validateObjectId(id);
 
 //   const existing = await Student.findById(id);
 
 //   if (!existing) throw createError(404, 'Student not found.');
 
-//   // Prevent bypassing library return validation through profile update.
+//   // 🚨 Capture old values
+//   const oldValues = existing.toObject();
+
 //   if (
 //     ['left', 'completed'].includes(data.status) &&
 //     data.status !== existing.status
@@ -364,7 +373,7 @@
 //     updateData.batch_id = updateData.batch_id || null;
 //   }
 
-//   return Student.findByIdAndUpdate(
+//   const updated = await Student.findByIdAndUpdate(
 //     id,
 //     { $set: updateData },
 //     { returnDocument: 'after', runValidators: true }
@@ -372,13 +381,35 @@
 //     .populate('user_id', 'name email phone is_active')
 //     .populate('course_id', 'name duration status')
 //     .populate('batch_id', 'name start_date end_date status');
+
+//   // 🚨 AUDIT LOG
+//   await auditService.logAction({
+//     userId: adminId,
+//     action: 'UPDATE_STUDENT',
+//     entity: 'Student',
+//     entityId: id,
+//     oldValues,
+//     newValues: updated.toObject(),
+//     ip,
+//   });
+
+//   return updated;
 // };
 
 // // ================= ASSIGN COURSE & BATCH =================
-// exports.assignCourseAndBatch = async (id, courseId, batchId) => {
+// exports.assignCourseAndBatch = async (id, courseId, batchId, adminId = null, ip = null) => { // 🚨 ADDED params
 //   validateObjectId(id);
 
 //   await validateAssignments(courseId, batchId);
+
+//   const existing = await Student.findById(id);
+//   if (!existing) throw createError(404, 'Student not found.');
+
+//   // 🚨 Capture old values
+//   const oldValues = {
+//     course_id: existing.course_id,
+//     batch_id: existing.batch_id,
+//   };
 
 //   const student = await Student.findByIdAndUpdate(
 //     id,
@@ -391,20 +422,28 @@
 //     .populate('course_id', 'name duration')
 //     .populate('batch_id', 'name start_date end_date');
 
-//   if (!student) throw createError(404, 'Student not found.');
+//   // 🚨 AUDIT LOG
+//   await auditService.logAction({
+//     userId: adminId,
+//     action: 'ASSIGN_COURSE_BATCH',
+//     entity: 'Student',
+//     entityId: id,
+//     oldValues,
+//     newValues: { course_id: courseId, batch_id: batchId || null },
+//     ip,
+//   });
 
 //   return student;
 // };
 
 // // ================= UPDATE STATUS =================
-// exports.updateStudentStatus = async (id, status) => {
+// exports.updateStudentStatus = async (id, status, adminId = null, ip = null) => { // 🚨 ADDED params
 //   validateObjectId(id);
 
 //   const student = await Student.findById(id);
 
 //   if (!student) throw createError(404, 'Student not found.');
 
-//   // Check pending books before changing status.
 //   if (
 //     ['left', 'completed'].includes(status) &&
 //     status !== student.status
@@ -412,7 +451,6 @@
 //     await validateBooksReturned(id);
 //   }
 
-//   // Update linked user login status.
 //   const isUserActive = status === 'active';
 
 //   if (student.user_id) {
@@ -423,15 +461,28 @@
 //     );
 //   }
 
-//   // Update student status.
+//   // 🚨 Capture old status
+//   const oldStatus = student.status;
+
 //   student.status = status;
 //   await student.save();
+
+//   // 🚨 AUDIT LOG
+//   await auditService.logAction({
+//     userId: adminId,
+//     action: 'UPDATE_STUDENT_STATUS',
+//     entity: 'Student',
+//     entityId: id,
+//     oldValues: { status: oldStatus },
+//     newValues: { status },
+//     ip,
+//   });
 
 //   return student;
 // };
 
 // // ================= UPDATE STAGE =================
-// exports.updateStudentStage = async (id, data, userId) => {
+// exports.updateStudentStage = async (id, data, userId, ip = null) => { // 🚨 ADDED ip
 //   validateObjectId(id);
 //   validateObjectId(userId, 'user ID');
 
@@ -456,6 +507,20 @@
 //     remarks: data.remarks || null,
 //   });
 
+//   // 🚨 AUDIT LOG
+//   await auditService.logAction({
+//     userId,
+//     action: 'UPDATE_STUDENT_STAGE',
+//     entity: 'Student',
+//     entityId: id,
+//     oldValues: { lifecycle_stage: previousStage },
+//     newValues: {
+//       lifecycle_stage: data.lifecycle_stage,
+//       stage_status: data.stage_status,
+//     },
+//     ip,
+//   });
+
 //   return student;
 // };
 
@@ -473,7 +538,7 @@
 // };
 
 // // ================= DIRECT ADMISSION =================
-// exports.createDirectAdmission = async (data, staffUserId) => {
+// exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // 🚨 ADDED ip
 //   validateObjectId(staffUserId, 'staff user ID');
 
 //   if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -574,7 +639,6 @@
 //   let student;
 
 //   try {
-//     // 1. Create student login account.
 //     user = await User.create({
 //       name: fullName,
 //       email: syntheticEmail,
@@ -585,10 +649,8 @@
 //       must_change_password: true,
 //     });
 
-//     // 2. Generate student ID using the shared counter.
 //     const studentId = await generateStudentId();
 
-//     // 3. Create student profile.
 //     student = await Student.create({
 //       student_id: studentId,
 //       user_id: user._id,
@@ -617,7 +679,6 @@
 //       created_by: staffUserId,
 //     });
 
-//     // 4. Generate student fee records.
 //     const feeRecords = feeComponents.map((component) => ({
 //       student_id: student._id,
 //       course_id: course._id,
@@ -632,7 +693,6 @@
 
 //     await StudentFee.insertMany(feeRecords);
 
-//     // 5. Create initial stage history.
 //     await StudentStageHistory.create({
 //       student_id: student._id,
 //       from_stage: null,
@@ -642,8 +702,23 @@
 //       changed_at: new Date(),
 //       remarks: 'Direct admission without enquiry.',
 //     });
+
+//     // 🚨 AUDIT LOG
+//     await auditService.logAction({
+//       userId: staffUserId,
+//       action: 'DIRECT_ADMISSION',
+//       entity: 'Student',
+//       entityId: student._id,
+//       oldValues: null,
+//       newValues: {
+//         student_id: student.student_id,
+//         full_name: fullName,
+//         course_id: course._id,
+//         fees_generated: feeComponents.length,
+//       },
+//       ip,
+//     });
 //   } catch (error) {
-//     // Roll back records created during direct admission.
 //     if (student?._id) {
 //       await StudentFee.deleteMany({
 //         student_id: student._id,
@@ -684,9 +759,6 @@
 // };
 
 
-
-
-
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
@@ -702,7 +774,8 @@ const TcLc = require('../../tclc/models/TcLc');
 const Role = require('../../rbac/models/Role');
 const StudentFee = require('../../fees/models/StudentFee');
 const FeeComponent = require('../../courses/models/FeeComponent');
-const auditService = require('../../audit/services/auditService'); // 🚨 ADDED
+const ConcessionMaster = require('../../fees/models/ConcessionMaster'); // 🚨 NEW
+const auditService = require('../../audit/services/auditService');
 
 function createError(statusCode, message) {
   const err = new Error(message);
@@ -820,8 +893,133 @@ async function generateStudentId() {
   return studentId;
 }
 
+// ============================================================
+// 🚨 NEW HELPERS — fee generation for admission
+// ============================================================
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+const computeConcessionAmount = (baseAmount, concession, feeComponentId) => {
+  if (!concession) return 0;
+  const applicable =
+    concession.applicable_to === 'all_fees' ||
+    (Array.isArray(concession.specific_fee_ids) &&
+      concession.specific_fee_ids.some(
+        (id) => String(id) === String(feeComponentId)
+      ));
+  if (!applicable) return 0;
+  return concession.type === 'percentage'
+    ? round2((baseAmount * concession.value) / 100)
+    : round2(Math.min(concession.value, baseAmount));
+};
+
+/**
+ * Build StudentFee rows for a new admission.
+ * - one_time    → 1 row per fee component using one_time_amount
+ * - installments → N rows per fee component using the chosen plan
+ * - concession is distributed proportionally across all rows
+ */
+const buildAdmissionFeeRows = ({
+  studentId,
+  courseId,
+  feeComponents,
+  paymentPlan,
+  chosenPlanId,
+  concession,
+}) => {
+  const rows = [];
+  const today = new Date();
+
+  for (const comp of feeComponents) {
+    if (paymentPlan === 'one_time') {
+      const baseAmount = Number(comp.one_time_amount);
+      const concessionAmount = computeConcessionAmount(
+        baseAmount,
+        concession,
+        comp._id
+      );
+      const net = round2(baseAmount - concessionAmount);
+
+      rows.push({
+        student_id: studentId,
+        course_id: courseId,
+        fee_component_id: comp._id,
+        fee_name: comp.name,
+        original_amount: baseAmount,
+        concession_id: concession ? concession._id : null,
+        concession_amount: concessionAmount,
+        concession_reason: concession ? concession.name : null,
+        amount_due: net,
+        amount_paid: 0,
+        installment_number: 1,
+        total_installments: 1,
+        due_date: today,
+        required_for_exam: comp.required_for_exam,
+        status: 'pending',
+      });
+      continue;
+    }
+
+    // ===== installments =====
+    const plan = (comp.installment_plans || []).find(
+      (p) => String(p._id) === String(chosenPlanId)
+    );
+    if (!plan) continue;
+
+    const baseTotal = Number(plan.total_amount);
+    const concessionAmount = computeConcessionAmount(
+      baseTotal,
+      concession,
+      comp._id
+    );
+    const netTotal = round2(baseTotal - concessionAmount);
+
+    const baseAmounts = plan.installment_amounts.map((a) => Number(a));
+    const baseSum = baseAmounts.reduce((s, a) => s + a, 0);
+    if (baseSum <= 0) continue;
+
+    const netAmounts = baseAmounts.map((a) =>
+      round2((a / baseSum) * netTotal)
+    );
+    // Fix rounding remainder on the last row
+    const netSum = netAmounts.reduce((s, a) => s + a, 0);
+    netAmounts[netAmounts.length - 1] = round2(
+      netAmounts[netAmounts.length - 1] + (netTotal - netSum)
+    );
+
+    plan.installment_amounts.forEach((_, idx) => {
+      const daysOffset = Number(
+        plan.due_days_from_start?.[idx] ?? idx * 30
+      );
+      const dueDate = new Date(today);
+      dueDate.setDate(dueDate.getDate() + daysOffset);
+
+      rows.push({
+        student_id: studentId,
+        course_id: courseId,
+        fee_component_id: comp._id,
+        fee_name: comp.name,
+        original_amount: idx === 0 ? baseTotal : 0,
+        concession_id: idx === 0 && concession ? concession._id : null,
+        concession_amount: idx === 0 ? concessionAmount : 0,
+        concession_reason:
+          idx === 0 && concession ? concession.name : null,
+        amount_due: netAmounts[idx],
+        amount_paid: 0,
+        installment_number: idx + 1,
+        total_installments: plan.number_of_installments,
+        due_date: dueDate,
+        required_for_exam: comp.required_for_exam,
+        status: 'pending',
+      });
+    });
+  }
+
+  return rows;
+};
+
 // ================= CREATE =================
-exports.createStudent = async (data, adminId, ip = null) => { // 🚨 ADDED ip
+exports.createStudent = async (data, adminId, ip = null) => {
   validateObjectId(adminId, 'creator user ID');
 
   const syntheticEmail = `${data.phone}@ims.com`;
@@ -864,7 +1062,6 @@ exports.createStudent = async (data, adminId, ip = null) => { // 🚨 ADDED ip
 
     await student.save();
 
-    // 🚨 AUDIT LOG
     await auditService.logAction({
       userId: adminId,
       action: 'CREATE_STUDENT',
@@ -1025,14 +1222,13 @@ exports.getStudentSummary = async (id) => {
 };
 
 // ================= UPDATE =================
-exports.updateStudent = async (id, data, adminId = null, ip = null) => { // 🚨 ADDED params
+exports.updateStudent = async (id, data, adminId = null, ip = null) => {
   validateObjectId(id);
 
   const existing = await Student.findById(id);
 
   if (!existing) throw createError(404, 'Student not found.');
 
-  // 🚨 Capture old values
   const oldValues = existing.toObject();
 
   if (
@@ -1071,7 +1267,6 @@ exports.updateStudent = async (id, data, adminId = null, ip = null) => { // 🚨
     .populate('course_id', 'name duration status')
     .populate('batch_id', 'name start_date end_date status');
 
-  // 🚨 AUDIT LOG
   await auditService.logAction({
     userId: adminId,
     action: 'UPDATE_STUDENT',
@@ -1086,7 +1281,7 @@ exports.updateStudent = async (id, data, adminId = null, ip = null) => { // 🚨
 };
 
 // ================= ASSIGN COURSE & BATCH =================
-exports.assignCourseAndBatch = async (id, courseId, batchId, adminId = null, ip = null) => { // 🚨 ADDED params
+exports.assignCourseAndBatch = async (id, courseId, batchId, adminId = null, ip = null) => {
   validateObjectId(id);
 
   await validateAssignments(courseId, batchId);
@@ -1094,7 +1289,6 @@ exports.assignCourseAndBatch = async (id, courseId, batchId, adminId = null, ip 
   const existing = await Student.findById(id);
   if (!existing) throw createError(404, 'Student not found.');
 
-  // 🚨 Capture old values
   const oldValues = {
     course_id: existing.course_id,
     batch_id: existing.batch_id,
@@ -1111,7 +1305,6 @@ exports.assignCourseAndBatch = async (id, courseId, batchId, adminId = null, ip 
     .populate('course_id', 'name duration')
     .populate('batch_id', 'name start_date end_date');
 
-  // 🚨 AUDIT LOG
   await auditService.logAction({
     userId: adminId,
     action: 'ASSIGN_COURSE_BATCH',
@@ -1126,7 +1319,7 @@ exports.assignCourseAndBatch = async (id, courseId, batchId, adminId = null, ip 
 };
 
 // ================= UPDATE STATUS =================
-exports.updateStudentStatus = async (id, status, adminId = null, ip = null) => { // 🚨 ADDED params
+exports.updateStudentStatus = async (id, status, adminId = null, ip = null) => {
   validateObjectId(id);
 
   const student = await Student.findById(id);
@@ -1150,13 +1343,11 @@ exports.updateStudentStatus = async (id, status, adminId = null, ip = null) => {
     );
   }
 
-  // 🚨 Capture old status
   const oldStatus = student.status;
 
   student.status = status;
   await student.save();
 
-  // 🚨 AUDIT LOG
   await auditService.logAction({
     userId: adminId,
     action: 'UPDATE_STUDENT_STATUS',
@@ -1171,7 +1362,7 @@ exports.updateStudentStatus = async (id, status, adminId = null, ip = null) => {
 };
 
 // ================= UPDATE STAGE =================
-exports.updateStudentStage = async (id, data, userId, ip = null) => { // 🚨 ADDED ip
+exports.updateStudentStage = async (id, data, userId, ip = null) => {
   validateObjectId(id);
   validateObjectId(userId, 'user ID');
 
@@ -1196,7 +1387,6 @@ exports.updateStudentStage = async (id, data, userId, ip = null) => { // 🚨 AD
     remarks: data.remarks || null,
   });
 
-  // 🚨 AUDIT LOG
   await auditService.logAction({
     userId,
     action: 'UPDATE_STUDENT_STAGE',
@@ -1226,19 +1416,28 @@ exports.getStudentStageHistory = async (id) => {
     .sort({ changed_at: -1 });
 };
 
-// ================= DIRECT ADMISSION =================
-exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // 🚨 ADDED ip
+// ================= DIRECT ADMISSION (UPDATED) =================
+exports.createDirectAdmission = async (data, staffUserId, ip = null) => {
   validateObjectId(staffUserId, 'staff user ID');
 
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw createError(400, 'Invalid admission data.');
   }
 
-  if (!data.course_id || !mongoose.isValidObjectId(data.course_id)) {
+  const {
+    course_id,
+    admission_type = 'new',
+    payment_plan = 'one_time',
+    chosen_installment_plan_id,
+    concession_id,
+    group_enquiry_ids = [],
+  } = data;
+
+  if (!course_id || !mongoose.isValidObjectId(course_id)) {
     throw createError(400, 'Please select a valid course.');
   }
 
-  const course = await Course.findById(data.course_id);
+  const course = await Course.findById(course_id);
 
   if (!course || course.status !== 'active') {
     throw createError(400, 'Selected course is not available.');
@@ -1309,6 +1508,74 @@ exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // �
     );
   }
 
+  // ─── Validate concession ───
+  let concession = null;
+  if (concession_id) {
+    if (!mongoose.isValidObjectId(concession_id)) {
+      throw createError(400, 'Invalid concession ID.');
+    }
+    concession = await ConcessionMaster.findById(concession_id);
+    if (!concession || concession.status !== 'active') {
+      throw createError(404, 'Concession not found or inactive.');
+    }
+
+    if (
+      concession.concession_type === 'old_student' &&
+      admission_type !== 'old'
+    ) {
+      throw createError(
+        400,
+        'Old Student concession can only be applied to re-enrolling students.'
+      );
+    }
+
+    if (concession.concession_type === 'group') {
+      const minStudents = Number(concession.min_students || 0);
+      const total = group_enquiry_ids.length + 1;
+      if (total < minStudents) {
+        throw createError(
+          400,
+          `Group concession requires at least ${minStudents} students. You selected ${total}.`
+        );
+      }
+
+      const Enquiry = require('../../enquiries/models/Enquiry');
+      const enquiries = await Enquiry.find({
+        _id: { $in: group_enquiry_ids },
+      });
+      if (enquiries.length !== group_enquiry_ids.length) {
+        throw createError(400, 'One or more group enquiries not found.');
+      }
+      if (enquiries.some((e) => e.status === 'converted')) {
+        throw createError(
+          400,
+          'One or more group enquiries are already converted.'
+        );
+      }
+    }
+  }
+
+  // ─── Validate payment plan ───
+  if (payment_plan === 'installments') {
+    if (
+      !chosen_installment_plan_id ||
+      !mongoose.isValidObjectId(chosen_installment_plan_id)
+    ) {
+      throw createError(400, 'Please select an installment plan.');
+    }
+    const planExists = feeComponents.some((fc) =>
+      (fc.installment_plans || []).some(
+        (p) => String(p._id) === String(chosen_installment_plan_id)
+      )
+    );
+    if (!planExists) {
+      throw createError(
+        400,
+        'Selected installment plan not found in this course.'
+      );
+    }
+  }
+
   const syntheticEmail = `${phone}@ims.com`;
 
   const existingUser = await User.findOne({
@@ -1340,6 +1607,20 @@ exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // �
 
     const studentId = await generateStudentId();
 
+    // Find plan name for display
+    let planName = null;
+    if (payment_plan === 'installments') {
+      for (const fc of feeComponents) {
+        const found = (fc.installment_plans || []).find(
+          (p) => String(p._id) === String(chosen_installment_plan_id)
+        );
+        if (found) {
+          planName = found.plan_name;
+          break;
+        }
+      }
+    }
+
     student = await Student.create({
       student_id: studentId,
       user_id: user._id,
@@ -1366,21 +1647,52 @@ exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // �
       status: 'active',
       admitted_on: new Date(),
       created_by: staffUserId,
+
+      // 🚨 NEW admission-time fields
+      admission_type,
+      payment_plan,
+      chosen_installment_plan_id:
+        payment_plan === 'installments' ? chosen_installment_plan_id : null,
+      chosen_installment_plan_name: planName,
+      concession_id: concession ? concession._id : null,
+      concession_applied_at: concession ? new Date() : null,
+      concession_applied_by: concession ? staffUserId : null,
+      group_enquiry_ids:
+        concession?.concession_type === 'group' ? group_enquiry_ids : [],
     });
 
-    const feeRecords = feeComponents.map((component) => ({
-      student_id: student._id,
-      course_id: course._id,
-      fee_component_id: component._id,
-      fee_name: component.name,
-      amount_due: component.amount,
-      amount_paid: 0,
-      due_date: null,
-      required_for_exam: component.required_for_exam,
-      status: 'pending',
-    }));
+    // ─── Generate fee rows (NEW logic) ───
+    const feeRows = buildAdmissionFeeRows({
+      studentId: student._id,
+      courseId: course._id,
+      feeComponents,
+      paymentPlan: payment_plan,
+      chosenPlanId: chosen_installment_plan_id,
+      concession,
+    });
 
-    await StudentFee.insertMany(feeRecords);
+    if (!feeRows.length) {
+      throw createError(400, 'No fee rows could be generated for this plan.');
+    }
+
+    await StudentFee.insertMany(feeRows);
+
+    // ─── Mark group enquiries converted ───
+    if (
+      concession?.concession_type === 'group' &&
+      group_enquiry_ids.length > 0
+    ) {
+      const Enquiry = require('../../enquiries/models/Enquiry');
+      await Enquiry.updateMany(
+        { _id: { $in: group_enquiry_ids } },
+        {
+          $set: {
+            status: 'converted',
+            converted_student_id: student._id,
+          },
+        }
+      );
+    }
 
     await StudentStageHistory.create({
       student_id: student._id,
@@ -1392,7 +1704,6 @@ exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // �
       remarks: 'Direct admission without enquiry.',
     });
 
-    // 🚨 AUDIT LOG
     await auditService.logAction({
       userId: staffUserId,
       action: 'DIRECT_ADMISSION',
@@ -1403,7 +1714,13 @@ exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // �
         student_id: student.student_id,
         full_name: fullName,
         course_id: course._id,
-        fees_generated: feeComponents.length,
+        payment_plan,
+        concession_id: concession?._id || null,
+        group_count:
+          concession?.concession_type === 'group'
+            ? group_enquiry_ids.length + 1
+            : 1,
+        fees_generated: feeRows.length,
       },
       ip,
     });
@@ -1436,6 +1753,8 @@ exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // �
       course_id: student.course_id,
       lifecycle_stage: student.lifecycle_stage,
       source_enquiry_id: null,
+      payment_plan: student.payment_plan,
+      concession_id: student.concession_id,
     },
     account: {
       email: syntheticEmail,
@@ -1443,6 +1762,6 @@ exports.createDirectAdmission = async (data, staffUserId, ip = null) => { // �
       temporary_password: temporaryPassword,
       must_change_password: true,
     },
-    fees_generated: feeComponents.length,
+    fees_generated: feeRows.length,
   };
 };

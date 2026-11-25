@@ -299,7 +299,13 @@ const enquirySchema = new mongoose.Schema(
       ref: 'Student',
       default: null,
     },
-
+    // Add inside enquirySchema
+  group_members: [
+  {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Enquiry',
+  },
+  ],
     created_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

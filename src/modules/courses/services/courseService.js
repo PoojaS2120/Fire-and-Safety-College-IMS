@@ -11,32 +11,68 @@
 //   return course;
 // };
 
-// exports.getCourses = async () => {
-//   const courses = await Course.find().populate('created_by', 'name').lean();
-  
-//   // Calculate total_fee on the fly for the UI
+// // ================= LIST (Paginated) =================
+// exports.getCourses = async (query = {}) => {
+//   const filter = {};
+
+//   // Optional status filter
+//   if (query.status) filter.status = query.status;
+
+//   // Optional search by name
+//   const searchTerm = query.q || query.search;
+//   if (searchTerm) {
+//     const escaped = String(searchTerm).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+//     filter.name = { $regex: escaped, $options: 'i' };
+//   }
+
+//   // Pagination — default 10 per page, cap 100
+//   const page = Math.max(1, parseInt(query.page, 10) || 1);
+//   const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 10));
+//   const skip = (page - 1) * limit;
+
+//   const [courses, total] = await Promise.all([
+//     Course.find(filter)
+//       .populate('created_by', 'name')
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit)
+//       .lean(),
+//     Course.countDocuments(filter),
+//   ]);
+
+//   // Calculate total_fee on the fly for the UI (only for the current page)
 //   for (const course of courses) {
-//     const fees = await FeeComponent.find({ course_id: course._id, status: 'active' });
+//     const fees = await FeeComponent.find({
+//       course_id: course._id,
+//       status: 'active',
+//     });
 //     course.total_fee = fees.reduce((sum, f) => sum + f.amount, 0);
 //     course.fee_count = fees.length;
 //   }
-  
-//   return courses;
+
+//   return {
+//     courses,
+//     meta: {
+//       page,
+//       limit,
+//       total,
+//       totalPages: Math.max(1, Math.ceil(total / limit)),
+//     },
+//   };
 // };
 
 // exports.updateCourse = async (courseId, updateData) => {
-//   // Check for duplicate name if name is being changed
 //   if (updateData.name) {
-//     const existing = await Course.findOne({ 
-//       name: updateData.name, 
-//       _id: { $ne: courseId } 
+//     const existing = await Course.findOne({
+//       name: updateData.name,
+//       _id: { $ne: courseId },
 //     });
 //     if (existing) throw { statusCode: 400, message: 'Another course with this name already exists' };
 //   }
 
 //   const course = await Course.findByIdAndUpdate(
-//     courseId, 
-//     updateData, 
+//     courseId,
+//     updateData,
 //     { returnDocument: 'after', runValidators: true }
 //   );
 //   if (!course) throw { statusCode: 404, message: 'Course not found' };
@@ -64,15 +100,14 @@
 // exports.getCourseFees = async (courseId) => {
 //   const course = await Course.findById(courseId);
 //   if (!course) throw { statusCode: 404, message: 'Course not found' };
-  
-//   // Return ALL fees (active + inactive) so admin can see them
+
 //   return await FeeComponent.find({ course_id: courseId }).sort({ createdAt: 1 });
 // };
 
 // exports.updateFeeComponent = async (feeId, updateData) => {
 //   const fee = await FeeComponent.findByIdAndUpdate(
-//     feeId, 
-//     updateData, 
+//     feeId,
+//     updateData,
 //     { returnDocument: 'after', runValidators: true }
 //   );
 //   if (!fee) throw { statusCode: 404, message: 'Fee component not found' };
@@ -82,10 +117,10 @@
 // exports.toggleFeeStatus = async (feeId) => {
 //   const fee = await FeeComponent.findById(feeId);
 //   if (!fee) throw { statusCode: 404, message: 'Fee component not found' };
-  
+
 //   fee.status = fee.status === 'active' ? 'inactive' : 'active';
 //   await fee.save();
-  
+
 //   return { message: `Fee component status changed to ${fee.status}`, status: fee.status };
 // };
 
@@ -101,7 +136,7 @@
 // exports.getBatchesByCourse = async (courseId, includeClosed = false) => {
 //   const course = await Course.findById(courseId);
 //   if (!course) throw { statusCode: 404, message: 'Course not found' };
-  
+
 //   const filter = { course_id: courseId };
 //   if (!includeClosed) filter.status = 'active';
 //   return await Batch.find(filter).sort({ start_date: -1 });
@@ -109,8 +144,8 @@
 
 // exports.updateBatch = async (batchId, updateData) => {
 //   const batch = await Batch.findByIdAndUpdate(
-//     batchId, 
-//     updateData, 
+//     batchId,
+//     updateData,
 //     { returnDocument: 'after', runValidators: true }
 //   );
 //   if (!batch) throw { statusCode: 404, message: 'Batch not found' };
@@ -140,21 +175,16 @@ exports.createCourse = async (courseData, adminId) => {
   return course;
 };
 
-// ================= LIST (Paginated) =================
 exports.getCourses = async (query = {}) => {
   const filter = {};
-
-  // Optional status filter
   if (query.status) filter.status = query.status;
 
-  // Optional search by name
   const searchTerm = query.q || query.search;
   if (searchTerm) {
     const escaped = String(searchTerm).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     filter.name = { $regex: escaped, $options: 'i' };
   }
 
-  // Pagination — default 10 per page, cap 100
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(query.limit, 10) || 10));
   const skip = (page - 1) * limit;
@@ -169,13 +199,16 @@ exports.getCourses = async (query = {}) => {
     Course.countDocuments(filter),
   ]);
 
-  // Calculate total_fee on the fly for the UI (only for the current page)
+  // total_fee uses one_time_amount now
   for (const course of courses) {
     const fees = await FeeComponent.find({
       course_id: course._id,
       status: 'active',
-    });
-    course.total_fee = fees.reduce((sum, f) => sum + f.amount, 0);
+    }).lean();
+    course.total_fee = fees.reduce(
+      (sum, f) => sum + Number(f.one_time_amount || 0),
+      0
+    );
     course.fee_count = fees.length;
   }
 
@@ -199,11 +232,10 @@ exports.updateCourse = async (courseId, updateData) => {
     if (existing) throw { statusCode: 400, message: 'Another course with this name already exists' };
   }
 
-  const course = await Course.findByIdAndUpdate(
-    courseId,
-    updateData,
-    { returnDocument: 'after', runValidators: true }
-  );
+  const course = await Course.findByIdAndUpdate(courseId, updateData, {
+    returnDocument: 'after',
+    runValidators: true,
+  });
   if (!course) throw { statusCode: 404, message: 'Course not found' };
   return course;
 };
@@ -217,12 +249,70 @@ exports.toggleCourseStatus = async (courseId) => {
   return { message: `Course status changed to ${course.status}`, status: course.status };
 };
 
+// ================= FEE COMPONENT VALIDATION =================
+const validateInstallmentPlans = (plans) => {
+  if (!plans || plans.length === 0) return;
+
+  for (let i = 0; i < plans.length; i++) {
+    const p = plans[i];
+
+    if (!p.plan_name || !p.plan_name.trim()) {
+      throw { statusCode: 400, message: `Plan ${i + 1}: plan name is required` };
+    }
+
+    const n = Number(p.number_of_installments);
+    if (!Number.isInteger(n) || n < 2 || n > 12) {
+      throw { statusCode: 400, message: `Plan ${i + 1}: number_of_installments must be 2-12` };
+    }
+
+    if (!Number.isFinite(Number(p.total_amount)) || Number(p.total_amount) <= 0) {
+      throw { statusCode: 400, message: `Plan ${i + 1}: total_amount must be > 0` };
+    }
+
+    if (
+      !Array.isArray(p.installment_amounts) ||
+      p.installment_amounts.length !== n
+    ) {
+      throw {
+        statusCode: 400,
+        message: `Plan ${i + 1}: ${n} installment amounts required`,
+      };
+    }
+
+    for (const a of p.installment_amounts) {
+      if (!Number.isFinite(Number(a)) || Number(a) < 0) {
+        throw { statusCode: 400, message: `Plan ${i + 1}: invalid installment amount` };
+      }
+    }
+
+    const sum = p.installment_amounts.reduce((s, a) => s + Number(a), 0);
+    if (Math.abs(sum - Number(p.total_amount)) > 0.01) {
+      throw {
+        statusCode: 400,
+        message: `Plan ${i + 1}: installment amounts sum (${sum}) must equal total_amount (${p.total_amount})`,
+      };
+    }
+  }
+};
+
 // ================= FEE COMPONENTS =================
 exports.addFeeComponent = async (courseId, feeData) => {
   const course = await Course.findById(courseId);
   if (!course) throw { statusCode: 404, message: 'Course not found' };
 
-  const fee = await FeeComponent.create({ ...feeData, course_id: courseId });
+  if (
+    !Number.isFinite(Number(feeData.one_time_amount)) ||
+    Number(feeData.one_time_amount) <= 0
+  ) {
+    throw { statusCode: 400, message: 'one_time_amount must be > 0' };
+  }
+
+  validateInstallmentPlans(feeData.installment_plans);
+
+  const fee = await FeeComponent.create({
+    ...feeData,
+    course_id: courseId,
+  });
   return fee;
 };
 
@@ -234,11 +324,14 @@ exports.getCourseFees = async (courseId) => {
 };
 
 exports.updateFeeComponent = async (feeId, updateData) => {
-  const fee = await FeeComponent.findByIdAndUpdate(
-    feeId,
-    updateData,
-    { returnDocument: 'after', runValidators: true }
-  );
+  if (updateData.installment_plans !== undefined) {
+    validateInstallmentPlans(updateData.installment_plans);
+  }
+
+  const fee = await FeeComponent.findByIdAndUpdate(feeId, updateData, {
+    returnDocument: 'after',
+    runValidators: true,
+  });
   if (!fee) throw { statusCode: 404, message: 'Fee component not found' };
   return fee;
 };
@@ -272,11 +365,10 @@ exports.getBatchesByCourse = async (courseId, includeClosed = false) => {
 };
 
 exports.updateBatch = async (batchId, updateData) => {
-  const batch = await Batch.findByIdAndUpdate(
-    batchId,
-    updateData,
-    { returnDocument: 'after', runValidators: true }
-  );
+  const batch = await Batch.findByIdAndUpdate(batchId, updateData, {
+    returnDocument: 'after',
+    runValidators: true,
+  });
   if (!batch) throw { statusCode: 404, message: 'Batch not found' };
   return batch;
 };

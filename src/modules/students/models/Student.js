@@ -430,7 +430,49 @@ const studentSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+// ============================================================
+// NEW: Admission-time fee + concession choices
+// ============================================================
+admission_type: {
+  type: String,
+  enum: ['new', 'old'],
+  default: 'new',
+},
 
+payment_plan: {
+  type: String,
+  enum: ['one_time', 'installments'],
+  default: 'one_time',
+},
+
+chosen_installment_plan_id: {
+  type: mongoose.Schema.Types.ObjectId,
+  default: null,
+},
+
+chosen_installment_plan_name: {
+  type: String,
+  default: null,
+},
+
+concession_id: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'ConcessionMaster',
+  default: null,
+},
+concession_applied_at: { type: Date, default: null },
+concession_applied_by: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'User',
+  default: null,
+},
+
+group_enquiry_ids: [
+  {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Enquiry',
+  },
+],
     // ============================================================
     // NEW (fee + concession integration) — purely additive
     // ============================================================
