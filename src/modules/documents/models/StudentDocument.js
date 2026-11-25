@@ -31,9 +31,38 @@ const studentDocumentSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Logged-in user who received the document
+    received_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    // Manually entered receiving faculty name
+    received_by_name: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: null,
+    },
+
+    received_at: {
+      type: Date,
+      default: null,
+    },
+
+    // Logged-in user who verified the document
     verified_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
+      default: null,
+    },
+
+    // Manually entered verifying faculty name
+    verified_by_name: {
+      type: String,
+      trim: true,
+      maxlength: 100,
       default: null,
     },
 

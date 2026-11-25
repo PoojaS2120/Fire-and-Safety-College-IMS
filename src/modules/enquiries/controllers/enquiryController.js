@@ -370,46 +370,57 @@ exports.getAdmissionForm = async (req, res, next) => {
   }
 };
 
+
 // SHARED HELPER: FETCH ADMISSION FORM DATA
 const fetchAdmissionFormData = async (id) => {
   if (!mongoose.isValidObjectId(id)) {
-    const error = new Error('Invalid enquiry ID.');
+    const error = new Error('Invalid admission record ID.');
     error.statusCode = 400;
     throw error;
   }
 
+  // First check whether this ID belongs to an enquiry
   const enquiry = await Enquiry.findById(id).select(
     'name status converted_student_id'
   );
 
-  if (!enquiry) {
-    const error = new Error('Enquiry not found.');
-    error.statusCode = 404;
-    throw error;
+  let studentId;
+
+  if (enquiry) {
+    // Existing enquiry-based admission workflow
+    if (!enquiry.converted_student_id) {
+      const error = new Error(
+        'This enquiry has not been converted into an admission.'
+      );
+      error.statusCode = 404;
+      throw error;
+    }
+
+    studentId = enquiry.converted_student_id;
+  } else {
+    // Direct admission: ID belongs to a Student
+    studentId = id;
   }
 
-  if (!enquiry.converted_student_id) {
-    const error = new Error(
-      'This enquiry has not been converted into an admission.'
-    );
-    error.statusCode = 404;
-    throw error;
-  }
-
-  const student = await Student.findById(enquiry.converted_student_id)
+  // Fetch student admission data
+  const student = await Student.findById(studentId)
     .select('+admission_form.aadhaar_number')
     .populate('course_id', 'name')
     .populate('batch_id', 'name')
     .lean();
 
   if (!student) {
-    const error = new Error('Converted student record not found.');
+    const error = new Error(
+      'Admission form not found. No matching enquiry or student record exists.'
+    );
     error.statusCode = 404;
     throw error;
   }
 
   return {
-    enquiry_id: enquiry._id,
+    enquiry_id: enquiry ? enquiry._id : null,
+    admission_source: enquiry ? 'enquiry' : 'direct',
+
     student: {
       _id: student._id,
       student_id: student.student_id,
@@ -425,9 +436,11 @@ const fetchAdmissionFormData = async (id) => {
       batch: student.batch_id,
       admitted_on: student.admitted_on,
     },
+
     admission_form: student.admission_form || {},
   };
 };
+
 // GET ADMISSION FORM IMAGE
 exports.getAdmissionFormImage = async (req, res, next) => {
   try {
