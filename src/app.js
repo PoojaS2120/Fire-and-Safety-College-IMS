@@ -107,6 +107,12 @@ app.use(
   require('./modules/materials/routes/materialRoutes')
 );
 
+// PHYSICAL MATERIAL DISTRIBUTION (Hand / Post / Courier)
+app.use(
+  '/api/v1/material-distributions',
+  require('./modules/materials/routes/distributionRoutes')
+);
+
 // SUBJECTS  <-- ADDED THIS HERE
 app.use('/api/v1/subjects', require('./modules/subjects/routes/subjectRoutes'));
 
