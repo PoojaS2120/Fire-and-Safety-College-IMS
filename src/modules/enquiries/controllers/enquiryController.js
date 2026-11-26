@@ -1020,3 +1020,62 @@ exports.updateAdmissionForm = async (req, res, next) => {
 // Shared with direct admission (students module): resize / compress / store one admission image
 exports.processAdmissionImage = (file, type) => processImage(file, type);
 
+// GET GROUP MEMBERS FOR ADMISSION FORM
+exports.getGroupMembers = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid enquiry ID.',
+      });
+    }
+
+    const enquiry = await Enquiry.findById(id)
+      .select('name course_interest_id group_members converted_student_id')
+      .populate({
+        path: 'group_members',
+        select: 'name phone mobile phone_tel email course_interest_id converted_student_id status createdAt',
+        populate: {
+          path: 'course_interest_id',
+          select: 'name duration',
+        },
+      })
+      .lean();
+
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: 'Enquiry not found.',
+      });
+    }
+
+    if (enquiry.converted_student_id) {
+      return res.status(409).json({
+        success: false,
+        message: 'This enquiry is already converted.',
+      });
+    }
+
+    const members = (enquiry.group_members || [])
+      .filter(Boolean)
+      .filter((member) =>
+        String(member.course_interest_id?._id || member.course_interest_id) ===
+        String(enquiry.course_interest_id)
+      );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Group members retrieved successfully.',
+      data: {
+        enquiry_id: enquiry._id,
+        course_id: enquiry.course_interest_id,
+        total: members.length,
+        members,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

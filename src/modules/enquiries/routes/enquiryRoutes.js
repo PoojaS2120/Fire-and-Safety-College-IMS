@@ -48,6 +48,13 @@ router.get(
   '/:id/admission-form/images/:imageType',
   enquiryController.getAdmissionFormImage
 );
+
+// Fetch existing group members automatically
+router.get(
+  '/:id/group-members',
+  enquiryController.getGroupMembers
+);
+
 // NEW: Delete enquiry
 router.delete('/:id', enquiryController.deleteEnquiry);
 
