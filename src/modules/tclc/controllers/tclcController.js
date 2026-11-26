@@ -123,25 +123,49 @@
 
 
 const tclcService = require('../services/tclcService');
-
 exports.requestCertificate = async (req, res, next) => {
   try {
-    const { studentId, type, reason } = req.body;
-    if (!studentId || !type || !reason) {
-      return res.status(400).json({
-        success: false,
-        message: 'studentId, type, and reason are required',
-      });
-    }
-    const request = await tclcService.requestTcLc(
+    const {
       studentId,
       type,
       reason,
+      certificateDetails
+    } = req.body;
+
+    if (!studentId || !type || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'studentId, type, and reason are required'
+      });
+    }
+
+    const safeType = String(type).trim().toUpperCase();
+
+    if (!['TC', 'LC'].includes(safeType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Certificate type must be TC or LC'
+      });
+    }
+
+    const request = await tclcService.requestTcLc(
+      studentId,
+      safeType,
+      reason,
       req.user.id,
-      req
+      req,
+      certificateDetails || {}
     );
-    res.status(201).json({ success: true, message: 'Request created successfully', data: request });
-  } catch (err) { next(err); }
+
+    res.status(201).json({
+      success: true,
+      message: `${safeType} request created successfully`,
+      data: request
+    });
+
+  } catch (err) {
+    next(err);
+  }
 };
 
 // ✅ UPDATED: Returns { success, data, meta } for pagination

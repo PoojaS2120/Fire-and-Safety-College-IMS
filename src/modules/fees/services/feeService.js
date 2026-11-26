@@ -465,6 +465,7 @@ exports.getReceiptData = async (paymentId) => {
   };
 };
 
+
 // ================= 5. RECEIPT PDF =================
 
 exports.generateReceiptPDF = async (paymentId) => {
@@ -472,101 +473,383 @@ exports.generateReceiptPDF = async (paymentId) => {
 
   const doc = new PDFDocument({
     size: 'A4',
-    margin: 50
+    margins: {
+      top: 35,
+      bottom: 35,
+      left: 40,
+      right: 40
+    },
+    bufferPages: true
   });
 
-  doc
-    .fontSize(20)
-    .font('Helvetica-Bold')
-    .text('Fire & Safety College', { align: 'center' });
+  const pageWidth = doc.page.width;
+  const left = 40;
+  const right = pageWidth - 40;
+  const contentWidth = right - left;
 
-  doc
-    .fontSize(14)
-    .font('Helvetica')
-    .text('Official Fee Receipt', { align: 'center' });
+  const formatAmount = (amount) =>
+    `Rs. ${Number(amount || 0).toFixed(2)}`;
 
-  doc.moveDown(2);
+  const formatDate = (date) =>
+    date
+      ? new Date(date).toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        })
+      : 'N/A';
 
-  doc.fontSize(11);
+  const drawLine = (y) => {
+    doc
+      .moveTo(left, y)
+      .lineTo(right, y)
+      .lineWidth(0.7)
+      .strokeColor('#555555')
+      .stroke();
+  };
 
-  doc.text(`Receipt Number: ${receipt.receipt_no}`);
-  doc.text(
-    `Payment Date: ${new Date(receipt.payment_date).toLocaleDateString('en-IN')}`
-  );
-  doc.text(`Payment Status: ${receipt.status.toUpperCase()}`);
-
-  doc.moveDown();
-
-  doc
-    .font('Helvetica-Bold')
-    .text('STUDENT DETAILS');
-
-  doc.font('Helvetica');
-
-  doc.text(`Student Name: ${receipt.student.full_name}`);
-  doc.text(`Student ID: ${receipt.student.student_id}`);
-  doc.text(`Course: ${receipt.course || 'Not available'}`);
-  doc.text(`Batch: ${receipt.batch || 'Not available'}`);
-
-  doc.moveDown();
-
-  doc
-    .font('Helvetica-Bold')
-    .text('PAYMENT DETAILS');
-
-  doc.font('Helvetica');
-
-  doc.text(`Payment Mode: ${receipt.mode.toUpperCase()}`);
-
-  if (receipt.reference_no) {
-    doc.text(`Reference Number: ${receipt.reference_no}`);
-  }
-
-  doc.moveDown();
-
-  if (receipt.allocations.length > 0) {
+  const drawSectionTitle = (title, y) => {
     doc
       .font('Helvetica-Bold')
-      .text('FEE ALLOCATION');
+      .fontSize(11)
+      .fillColor('#000000')
+      .text(title, left + 8, y);
 
-    doc.font('Helvetica');
+    drawLine(y + 20);
 
-    receipt.allocations.forEach(allocation => {
-      doc.text(
-        `${allocation.fee_name || 'Fee component'}: Rs. ${allocation.amount.toFixed(2)}`
-      );
+    return y + 30;
+  };
+
+  // OUTER RECEIPT BORDER
+  doc
+    .lineWidth(1.5)
+    .strokeColor('#000000')
+    .rect(left, 30, contentWidth, 780)
+    .stroke();
+
+  let y = 45;
+
+  // COLLEGE HEADER
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(11)
+    .fillColor('#000000')
+    .text("G.G. Foundation's", left, y, {
+      width: contentWidth,
+      align: 'center'
     });
 
-    doc.moveDown();
-  }
+  y += 18;
 
   doc
     .font('Helvetica-Bold')
-    .fontSize(16)
-    .text(`Amount Received: Rs. ${Number(receipt.amount).toFixed(2)}`);
+    .fontSize(17)
+    .text('SAHYADRI COLLEGE OF FIRE ENGINEERING', left, y, {
+      width: contentWidth,
+      align: 'center'
+    });
 
-  doc.moveDown();
+  y += 23;
 
-  doc.fontSize(12);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(15)
+    .text('AND SAFETY MANAGEMENT', left, y, {
+      width: contentWidth,
+      align: 'center'
+    });
 
-  if (receipt.balance_after !== null) {
+  y += 22;
+
+  doc
+    .font('Helvetica')
+    .fontSize(9)
+    .text('Nashik, Maharashtra', left, y, {
+      width: contentWidth,
+      align: 'center'
+    });
+
+  y += 22;
+
+  drawLine(y);
+
+  y += 12;
+
+  // RECEIPT TITLE
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(15)
+    .text('FEE RECEIPT', left, y, {
+      width: contentWidth,
+      align: 'center'
+    });
+
+  y += 28;
+
+  drawLine(y);
+
+  y += 12;
+
+  // RECEIPT INFORMATION
+  doc.fontSize(10).font('Helvetica');
+
+  doc.text(`Receipt No.: ${receipt.receipt_no || 'N/A'}`, left + 8, y);
+  doc.text(
+    `Date: ${formatDate(receipt.payment_date)}`,
+    right - 170,
+    y
+  );
+
+  y += 20;
+
+  const paymentStatus = String(receipt.status || 'completed').toUpperCase();
+
+  doc
+    .font('Helvetica-Bold')
+    .fillColor(paymentStatus === 'CANCELLED' ? '#B00020' : '#000000')
+    .text(`Payment Status: ${paymentStatus}`, left + 8, y);
+
+  doc.fillColor('#000000');
+
+  y += 25;
+
+  // STUDENT DETAILS
+  y = drawSectionTitle('STUDENT DETAILS', y);
+
+  doc.font('Helvetica').fontSize(10);
+
+  doc.text(`Student Name: ${receipt.student.full_name || 'N/A'}`, left + 8, y);
+  y += 20;
+
+  doc.text(`Student ID: ${receipt.student.student_id || 'N/A'}`, left + 8, y);
+  y += 20;
+
+  doc.text(`Course: ${receipt.course || 'N/A'}`, left + 8, y);
+  y += 20;
+
+  doc.text(`Batch: ${receipt.batch || 'N/A'}`, left + 8, y);
+  y += 25;
+
+  // PAYMENT DETAILS
+  y = drawSectionTitle('PAYMENT DETAILS', y);
+
+  doc.font('Helvetica').fontSize(10);
+
+  doc.text(
+    `Payment Mode: ${String(receipt.mode || 'N/A').toUpperCase()}`,
+    left + 8,
+    y
+  );
+
+  y += 20;
+
+  if (receipt.reference_no) {
+    doc.text(`Reference Number: ${receipt.reference_no}`, left + 8, y);
+    y += 20;
+  }
+
+  y += 5;
+
+  // FEE ALLOCATION TABLE
+  y = drawSectionTitle('FEE PARTICULARS', y);
+
+  const tableLeft = left + 8;
+  const tableRight = right - 8;
+  const tableWidth = tableRight - tableLeft;
+
+  const feeColumnWidth = tableWidth * 0.68;
+  const amountColumnWidth = tableWidth - feeColumnWidth;
+
+  const rowHeight = 25;
+
+  // TABLE HEADER
+  doc
+    .rect(tableLeft, y, tableWidth, rowHeight)
+    .fillAndStroke('#EEEEEE', '#555555');
+
+  doc
+    .fillColor('#000000')
+    .font('Helvetica-Bold')
+    .fontSize(10)
+    .text('Fee Particulars', tableLeft + 8, y + 7, {
+      width: feeColumnWidth - 12
+    });
+
+  doc.text('Amount (Rs.)', tableLeft + feeColumnWidth + 5, y + 7, {
+    width: amountColumnWidth - 10,
+    align: 'right'
+  });
+
+  y += rowHeight;
+
+  // TABLE ROWS
+  const allocations = receipt.allocations || [];
+
+  if (allocations.length === 0) {
+    doc
+      .rect(tableLeft, y, tableWidth, rowHeight)
+      .stroke();
+
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .text('Payment allocation details not available', tableLeft + 8, y + 7);
+
+    y += rowHeight;
+  } else {
+    allocations.forEach((allocation) => {
+      // Avoid writing outside the receipt page.
+      if (y + rowHeight > 730) {
+        doc.addPage();
+        y = 50;
+      }
+
+      doc
+        .rect(tableLeft, y, tableWidth, rowHeight)
+        .stroke();
+
+      doc
+        .font('Helvetica')
+        .fontSize(9)
+        .fillColor('#000000')
+        .text(
+          allocation.fee_name || 'Fee Component',
+          tableLeft + 8,
+          y + 7,
+          {
+            width: feeColumnWidth - 12
+          }
+        );
+
+      doc.text(
+        Number(allocation.amount || 0).toFixed(2),
+        tableLeft + feeColumnWidth + 5,
+        y + 7,
+        {
+          width: amountColumnWidth - 10,
+          align: 'right'
+        }
+      );
+
+      y += rowHeight;
+    });
+  }
+
+  y += 15;
+
+  // TOTAL AMOUNT
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(12)
+    .text('TOTAL AMOUNT RECEIVED:', left + 8, y);
+
+  doc.text(
+    formatAmount(receipt.amount),
+    right - 160,
+    y,
+    {
+      width: 150,
+      align: 'right'
+    }
+  );
+
+  y += 30;
+
+  // AMOUNT IN WORDS
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(10)
+    .text('Amount in Words:', left + 8, y);
+
+  y += 17;
+
+  doc
+    .font('Helvetica')
+    .fontSize(10)
+    .text(numberToWords(receipt.amount), left + 8, y, {
+      width: contentWidth - 20
+    });
+
+  y += 35;
+
+  // BALANCE DETAILS
+  drawLine(y);
+
+  y += 12;
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(11)
+    .text('BALANCE DETAILS', left + 8, y);
+
+  y += 22;
+
+  doc.font('Helvetica').fontSize(10);
+
+  if (receipt.balance_after !== null && receipt.balance_after !== undefined) {
     doc.text(
-      `Balance After Payment: Rs. ${Number(receipt.balance_after).toFixed(2)}`
+      `Outstanding Balance: ${formatAmount(receipt.balance_after)}`,
+      left + 8,
+      y
     );
   } else {
     doc.text(
-      'Balance After Payment: Not available for this historical payment'
+      'Outstanding Balance: Not available for this historical payment',
+      left + 8,
+      y
     );
   }
 
-  doc.moveDown(3);
+  y += 30;
+
+  // CANCELLED PAYMENT INFORMATION
+  if (paymentStatus === 'CANCELLED') {
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(12)
+      .fillColor('#B00020')
+      .text('CANCELLED PAYMENT - NOT VALID FOR PAYMENT PROOF', left + 8, y, {
+        width: contentWidth - 16,
+        align: 'center'
+      });
+
+    doc.fillColor('#000000');
+    y += 25;
+  }
+
+  // SIGNATURE AREA
+  const signatureY = Math.max(y + 35, 700);
+
+  drawLine(signatureY);
 
   doc
-    .fontSize(10)
     .font('Helvetica')
+    .fontSize(9)
+    .text('Student Signature', left + 15, signatureY + 12);
+
+  doc.text(
+    'Authorized Signature',
+    right - 150,
+    signatureY + 12,
+    {
+      width: 135,
+      align: 'center'
+    }
+  );
+
+  // FOOTER
+  doc
+    .font('Helvetica-Oblique')
+    .fontSize(8)
+    .fillColor('#555555')
     .text(
-      'This is a computer-generated receipt. No signature required.',
-      { align: 'center', color: 'grey' }
+      'This is a computer-generated receipt.',
+      left,
+      780,
+      {
+        width: contentWidth,
+        align: 'center'
+      }
     );
 
   doc.end();

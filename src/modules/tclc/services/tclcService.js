@@ -410,38 +410,58 @@ const runEligibilityChecks = async (studentId, type) => {
 // ==========================================================
 // 1. REQUEST TC/LC
 // ==========================================================
-exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
+exports.requestTcLc = async (
+  studentId,
+  type,
+  reason,
+  staffId,
+  req,
+  certificateDetails = {}
+) => {
+
   const safeType = String(type).trim().toUpperCase();
 
   if (!['TC', 'LC'].includes(safeType)) {
-    throw { statusCode: 400, message: 'Type must be TC or LC' };
+    throw {
+      statusCode: 400,
+      message: 'Type must be TC or LC'
+    };
   }
 
-  const { isEligible, notes } = await runEligibilityChecks(studentId, safeType);
+  const { isEligible, notes } =
+    await runEligibilityChecks(studentId, safeType);
 
   if (!isEligible) {
-    throw { statusCode: 400, message: `Cannot request TC/LC. ${notes.join(' ')}` };
+    throw {
+      statusCode: 400,
+      message: `Cannot request ${safeType}. ${notes.join(' ')}`
+    };
   }
 
   const existingRequest = await TcLc.findOne({
     student_id: studentId,
     type: safeType,
-    status: 'requested',
+    status: 'requested'
   });
 
   if (existingRequest) {
-    throw { statusCode: 409, message: `A ${safeType} request is already pending for this student.` };
+    throw {
+      statusCode: 409,
+      message: `A ${safeType} request is already pending`
+    };
   }
 
   const request = await TcLc.create({
     student_id: studentId,
     type: safeType,
     reason,
+    certificate_details: certificateDetails,
     requested_by: staffId,
     status: 'requested',
+
     eligibility_note: safeType === 'TC'
       ? 'Eligible: No dues and student status is left.'
-      : 'Eligible: No dues and course completed.',
+      : 'Eligible: No dues and course completed.'
   });
 
   if (req) {
@@ -451,8 +471,13 @@ exports.requestTcLc = async (studentId, type, reason, staffId, req) => {
       entity: 'TcLc',
       entityId: request._id,
       oldValues: null,
-      newValues: { student_id: studentId, type: safeType, reason, status: 'requested' },
-      ip: getIp(req),
+      newValues: {
+        student_id: studentId,
+        type: safeType,
+        reason,
+        status: 'requested'
+      },
+      ip: getIp(req)
     });
   }
 
@@ -652,57 +677,269 @@ exports.rejectTcLc = async (requestId, reason, adminId, req) => {
 // 7. GENERATE PDF
 // ==========================================================
 exports.generateTcLcPDF = async (requestId) => {
+
   const request = await TcLc.findById(requestId).populate({
     path: 'student_id',
-    populate: { path: 'course_id', select: 'name' },
+    populate: {
+      path: 'course_id',
+      select: 'name'
+    }
   });
 
-  if (!request) throw { statusCode: 404, message: 'Request not found' };
+  if (!request) {
+    throw {
+      statusCode: 404,
+      message: 'Request not found'
+    };
+  }
+
   if (!['approved', 'issued'].includes(request.status)) {
-    throw { statusCode: 400, message: 'Certificate is not approved yet' };
+    throw {
+      statusCode: 400,
+      message: 'Certificate is not approved yet'
+    };
   }
 
   const student = request.student_id;
-  const doc = new PDFDocument({ margin: 50 });
+  const details = request.certificate_details || {};
 
-  const formattedName = student.full_name.replace(/\w\S*/g, (txt) => 
-    txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
-  );
+  const doc = new PDFDocument({
+    size: 'A4',
+    margins: {
+      top: 35,
+      bottom: 35,
+      left: 45,
+      right: 45
+    }
+  });
 
-  let guardianText = '';
-  if (student.guardian_name && student.guardian_name.trim() !== '') {
-    guardianText = `, son/daughter of ${student.guardian_name},`;
-  }
+  const left = 45;
+  const right = 550;
+  const labelX = 55;
+  const valueX = 360;
 
-  doc.fontSize(22).text('Fire & Safety College', { align: 'center' });
-  doc.fontSize(16).text(
-    request.type === 'TC' ? 'Transfer Certificate' : 'Leaving Certificate',
-    { align: 'center', underline: true }
-  );
-  doc.moveDown();
-  doc.fontSize(10).text(`Certificate No: ${request.certificate_no}`, { align: 'right' });
-  doc.moveDown();
+  // Date formatting
+  const formatDate = (value) => {
+    if (!value) return '';
 
-  doc.fontSize(12).text(
-    `This is to certify that Mr./Ms. ${formattedName}, bearing Student ID ${student.student_id}${guardianText} was a bonafide student of this institute.`,
-    { align: 'justify' }
-  );
-  doc.moveDown();
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+
+    return date.toLocaleDateString('en-IN');
+  };
+
+  // Draw certificate header
+  doc.font('Helvetica-Bold')
+    .fontSize(14)
+    .text("G.G. Foundation's", left, 35, {
+      align: 'center'
+    });
+
+  doc.fontSize(17)
+    .text('Sahyadri College of Fire Engineering', {
+      align: 'center'
+    });
+
+  doc.fontSize(15)
+    .text('and Safety Management', {
+      align: 'center'
+    });
+
+  doc.font('Helvetica')
+    .fontSize(8)
+    .text(
+      'Recognised by Govt. of Maharashtra and Affiliated to Maharashtra State Board of Technical Education, Mumbai',
+      {
+        align: 'center'
+      }
+    );
+
   doc.text(
-    `He/She was admitted on ${new Date(student.admitted_on).toLocaleDateString()} and has successfully completed the course "${student.course_id?.name || 'N/A'}".`
+    'Address: Plot No. 704, Near Namdhari Seeds, Bafna Warehouse Road, Nashik - 422003',
+    {
+      align: 'center'
+    }
   );
-  doc.moveDown();
+
   doc.text(
-    'His/Her conduct and character during the period of study were found to be satisfactory.'
+    'Tel: 0253 2590401 | Email: info@sahyadrieducation.org | Web: sahyadrieducation.org',
+    {
+      align: 'center'
+    }
   );
-  doc.moveDown();
-  doc.text(`Reason for leaving: ${request.reason}`);
-  doc.moveDown(3);
 
-  doc.text('Date of Issue: ___________________', { align: 'left' });
-  doc.text('Principal / Authorized Signatory', 400, 650, { align: 'right' });
+  doc.moveTo(left, 125)
+    .lineTo(right, 125)
+    .stroke();
 
-  doc.end(); 
+  // Certificate title
+  const certificateTitle =
+    request.type === 'LC'
+      ? 'LEAVING CERTIFICATE'
+      : 'TRANSFER CERTIFICATE';
+
+  doc.font('Helvetica-Bold')
+    .fontSize(19)
+    .text(certificateTitle, left, 140, {
+      align: 'center'
+    });
+
+  doc.fontSize(10)
+    .text(
+      `Sr. No.: ${request.certificate_no || ''}`,
+      420,
+      143
+    );
+
+  doc.font('Helvetica')
+    .fontSize(8)
+    .text(
+      'No change in any entry in this certificate shall be made except by the authority issuing it.',
+      left,
+      175,
+      {
+        align: 'center'
+      }
+    );
+
+  // Register and enrollment number
+  doc.fontSize(10)
+    .text(`Register No.: ${details.registerNo || ''}`, left, 210);
+
+  doc.text(
+    `Enrollment No.: ${details.enrollmentNo || ''}`,
+    330,
+    210
+  );
+
+  // Certificate fields
+  const fields = [
+    [
+      '1) Name of the Candidate (in Full)',
+      student.full_name || ''
+    ],
+    [
+      '2) Caste and Sub-Caste',
+      details.caste || ''
+    ],
+    [
+      '3) Nationality',
+      details.nationality || 'Indian'
+    ],
+    [
+      '4) Place of Birth',
+      details.placeOfBirth || ''
+    ],
+    [
+      '5) Date of Birth',
+      `${formatDate(details.dateOfBirth)} ${details.dateOfBirthWords ? '(' + details.dateOfBirthWords + ')' : ''}`
+    ],
+    [
+      '6) Last School / College Attended',
+      details.lastCollegeAttended || ''
+    ],
+    [
+      '7) Date of Admission',
+      formatDate(details.dateOfAdmission || student.admitted_on)
+    ],
+    [
+      '8) Progress',
+      details.progress || ''
+    ],
+    [
+      '9) Conduct',
+      details.conduct || ''
+    ],
+    [
+      '10) Date of Leaving College',
+      formatDate(details.dateOfLeaving)
+    ],
+    [
+      '11) Course & Year in Which Studying and Since When',
+      details.courseAndYear || student.course_id?.name || ''
+    ],
+    [
+      '12) Reason for Leaving the College',
+      details.reasonForLeaving || request.reason || ''
+    ],
+    [
+      '13) Remarks',
+      details.remarks || ''
+    ]
+  ];
+
+  let y = 245;
+
+  fields.forEach(([label, value], index) => {
+
+    const labelHeight = doc.heightOfString(label, {
+      width: 270,
+      fontSize: 10
+    });
+
+    const valueHeight = doc.heightOfString(String(value), {
+      width: 180,
+      fontSize: 10
+    });
+
+    const rowHeight = Math.max(
+      28,
+      labelHeight,
+      valueHeight
+    );
+
+    doc.font('Helvetica')
+      .fontSize(10)
+      .text(label, labelX, y, {
+        width: 270
+      });
+
+    doc.text(':', 335, y);
+
+    doc.text(String(value), valueX, y, {
+      width: 180
+    });
+
+    doc.moveTo(350, y + rowHeight - 5)
+      .lineTo(right, y + rowHeight - 5)
+      .strokeColor('#555555')
+      .lineWidth(0.5)
+      .stroke();
+
+    y += rowHeight + 5;
+  });
+
+  // Certification
+  y += 15;
+
+  doc.fontSize(10)
+    .text(
+      'Certified that above information is in accordance with the college Register.',
+      left,
+      y
+    );
+
+  // Footer
+  y += 60;
+
+  doc.text(
+    `Date: ${formatDate(request.issue_date || new Date())}`,
+    left,
+    y
+  );
+
+  doc.text('Clerk', 285, y + 35, {
+    align: 'center'
+  });
+
+  doc.text('Principal', 475, y + 35, {
+    align: 'center'
+  });
+
+  doc.end();
 
   return doc;
 };
