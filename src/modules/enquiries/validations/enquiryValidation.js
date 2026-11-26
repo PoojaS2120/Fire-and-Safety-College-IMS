@@ -64,8 +64,9 @@ const enquiryFields = {
   course_interest_id: Joi.string().hex().length(24).allow('', null),
 
   phone_tel: Joi.string().trim().pattern(phonePattern).allow('', null),
-  mobile: Joi.string().trim().pattern(phonePattern).allow('', null),
-  phone: Joi.string().trim().pattern(phonePattern).allow('', null),
+mobile: Joi.string().trim().pattern(phonePattern).allow('', null),
+home_mobile_no: Joi.string().trim().pattern(phonePattern).allow('', null),
+phone: Joi.string().trim().pattern(phonePattern).allow('', null),
   email: Joi.string().trim().email().max(200).allow('', null),
   address: Joi.string().trim().max(1000).allow('', null),
   postal_address: addressSchema,
@@ -269,3 +270,8 @@ exports.convertEnquirySchema = Joi.object({
 
   return value;
 });
+// Public enquiry schema: exclude internal management fields
+exports.publicCreateEnquirySchema = exports.createEnquirySchema.fork(
+  ['source', 'notes'],
+  (schema) => schema.forbidden()
+);
