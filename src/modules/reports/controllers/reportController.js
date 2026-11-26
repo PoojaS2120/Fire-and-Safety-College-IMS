@@ -94,6 +94,41 @@ exports.downloadEnquiries = async (req, res, next) => {
   }
 };
 
+// ================= ENQUIRY STATUS-WISE REPORTS =================
+
+const downloadEnquiryStatusReport = (status, filename) =>
+  async (req, res, next) => {
+    try {
+      const workbook = await reportService.getEnquiryStatusReport(
+        status,
+        req.query
+      );
+
+      streamExcel(
+        res,
+        workbook,
+        `${filename}_${Date.now()}`
+      );
+    } catch (err) {
+      next(err);
+    }
+  };
+
+exports.downloadInterestedEnquiries = downloadEnquiryStatusReport(
+  'interested',
+  'Interested_Enquiries'
+);
+
+exports.downloadNotInterestedEnquiries = downloadEnquiryStatusReport(
+  'not_interested',
+  'Not_Interested_Enquiries'
+);
+
+exports.downloadFollowUpEnquiries = downloadEnquiryStatusReport(
+  'follow_up',
+  'Follow_Up_Enquiries'
+);
+
 // ================= B-28: RECEIPTS =================
 
 exports.downloadReceipts = async (req, res, next) => {

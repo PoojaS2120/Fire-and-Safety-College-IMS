@@ -49,6 +49,25 @@ router.get(
   reportController.downloadEnquiries
 );
 
+// Enquiry Status-wise Excel Reports
+
+router.get(
+  '/enquiries/interested',
+  adminOnly,
+  reportController.downloadEnquiryStatusReport
+);
+
+router.get(
+  '/enquiries/not-interested',
+  adminOnly,
+  reportController.downloadEnquiryStatusReport
+);
+
+router.get(
+  '/enquiries/follow-up',
+  adminOnly,
+  reportController.downloadEnquiryStatusReport
+);
 // Students
 router.get(
   '/students',

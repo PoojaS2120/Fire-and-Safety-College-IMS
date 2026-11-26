@@ -412,6 +412,74 @@ exports.getEnquiriesReport = async (query = {}) => {
 };
 
 // ============================================================
+// ENQUIRY STATUS-WISE EXCEL REPORT
+// ============================================================
+
+exports.getEnquiryStatusReport = async (status, query = {}) => {
+  const allowedStatuses = [
+    'interested',
+    'not_interested',
+    'follow_up',
+  ];
+
+  if (!allowedStatuses.includes(status)) {
+    const error = new Error('Invalid enquiry status.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const filter = {
+    converted_student_id: null,
+    status,
+    ...buildDateFilter(query, 'createdAt'),
+  };
+
+  validateObjectId(query.courseId, 'courseId');
+
+  if (query.courseId) {
+    filter.course_interest_id = query.courseId;
+  }
+
+  const enquiries = await Enquiry.find(filter)
+    .populate('course_interest_id', 'name')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const data = enquiries.map((enquiry) => ({
+    Name: enquiry.name || '',
+    Phone: enquiry.phone || '',
+    Course: enquiry.course_interest_id?.name || 'N/A',
+    Source: enquiry.source || 'N/A',
+    Status: enquiry.status
+      ? enquiry.status.toUpperCase()
+      : '',
+    Date: enquiry.createdAt
+      ? new Date(enquiry.createdAt).toLocaleDateString()
+      : '',
+  }));
+
+  const columns = [
+    { header: 'Name', key: 'Name', width: 25 },
+    { header: 'Phone', key: 'Phone', width: 15 },
+    { header: 'Course Interest', key: 'Course', width: 20 },
+    { header: 'Source', key: 'Source', width: 15 },
+    { header: 'Status', key: 'Status', width: 18 },
+    { header: 'Date', key: 'Date', width: 15 },
+  ];
+
+  const sheetNames = {
+    interested: 'Interested',
+    not_interested: 'Not Interested',
+    follow_up: 'Follow Up',
+  };
+
+  return generateWorkbook(
+    data,
+    columns,
+    sheetNames[status]
+  );
+};  
+// ============================================================
 // 5. STUDENTS REPORT
 // ============================================================
 
