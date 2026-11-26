@@ -85,7 +85,7 @@ const { authorize } = require('../../../middlewares/authorize');
 
 const studentController = require('../controllers/studentController');
 const { uploadAdmissionImages } = require('../../uploads/middleware/uploadMiddleware');
-
+const bonafideController = require('../controllers/bonafideController');
 // Base authentication
 router.use(verifyToken);
 
@@ -126,7 +126,11 @@ router.get(
   authorize('super_admin', 'office_staff'),
   studentController.getStudentStageHistory
 );
-
+router.get(
+  '/:id/bonafide',
+  authorize('super_admin', 'office_staff'),
+  bonafideController.getBonafide
+);
 router.get(
   '/:id',
   authorize('super_admin', 'office_staff'),
