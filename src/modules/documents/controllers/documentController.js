@@ -149,6 +149,7 @@ exports.downloadStudentDocument = async (req, res, next) => {
 };
 
 
+
 // 4. Verify / receive / reject document
 exports.updateDocumentStatus = async (req, res, next) => {
   try {
@@ -159,11 +160,20 @@ exports.updateDocumentStatus = async (req, res, next) => {
       verified_by_name,
     } = req.body;
 
+    // Support the existing frontend remarks object.
+    const remarksText =
+      typeof remarks === 'string'
+        ? remarks
+        : remarks?.remarks;
+
+    const receivingFacultyName =
+      received_by_name || remarks?.name;
+
     const document = await documentService.updateDocumentStatus({
       documentId: req.params.id,
       status,
-      remarks,
-      received_by_name,
+      remarks: remarksText,
+      received_by_name: receivingFacultyName,
       verified_by_name,
       userId: req.user.id,
       ip: req.ip,
@@ -178,6 +188,7 @@ exports.updateDocumentStatus = async (req, res, next) => {
     next(error);
   }
 };
+
 
 // 5. Soft-delete document
 exports.softDeleteDocument = async (req, res, next) => {
