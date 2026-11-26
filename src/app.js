@@ -4,7 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const connectDB = require('./config/db');
 const errorMiddleware = require('./middlewares/errorMiddleware');
-
+const groupConcessionRoutes = require('./modules/enquiries/routes/groupConcession.routes');
 // Connect to Database
 connectDB();
 
@@ -60,7 +60,7 @@ app.use(
 // ENQUIRY & STUDENTS
 app.use('/api/v1/enquiries', require('./modules/enquiries/routes/enquiryRoutes'));
 app.use('/api/v1/students', require('./modules/students/routes/studentRoutes'));
-
+app.use('/api/v1/admissions/group-concession', groupConcessionRoutes);
 // I-CARDS
 app.use('/api/v1/icards', require('./modules/icards/routes/iCardRoutes'));
 

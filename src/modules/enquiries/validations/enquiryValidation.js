@@ -27,6 +27,8 @@ const addressSchema = Joi.object({
 }).unknown(false);
 
 const academicQualificationSchema = Joi.object({
+  level: Joi.string().valid('10th', '12th_iti', 'diploma_degree', 'other').required(),
+  examination_passed: Joi.string().trim().max(150).allow(''),
   examination_passed: Joi.string().trim().max(150).allow(''),
   school_college: Joi.string().trim().max(200).allow(''),
   year_of_passing: Joi.number().integer().min(1900).max(2100).allow(null),
