@@ -59,15 +59,26 @@ exports.addFeeComponent = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+
 exports.getCourseFees = async (req, res, next) => {
   try {
     const fees = await courseService.getCourseFees(req.params.courseId);
+
     const totalFee = fees
-      .filter(f => f.status === 'active')
-      .reduce((sum, item) => sum + item.amount, 0);
-    
-    res.status(200).json({ success: true, totalFee, data: fees });
-  } catch (err) { next(err); }
+      .filter((fee) => fee.status === "active")
+      .reduce(
+        (sum, fee) => sum + Number(fee.one_time_amount || 0),
+        0
+      );
+
+    res.status(200).json({
+      success: true,
+      totalFee,
+      data: fees,
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 exports.updateFeeComponent = async (req, res, next) => {
