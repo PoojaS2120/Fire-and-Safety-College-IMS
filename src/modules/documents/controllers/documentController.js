@@ -160,21 +160,26 @@ exports.updateDocumentStatus = async (req, res, next) => {
       verified_by_name,
     } = req.body;
 
-    // Support the existing frontend remarks object.
+    // Support both string remarks and the frontend's nested remarks object.
     const remarksText =
       typeof remarks === 'string'
         ? remarks
         : remarks?.remarks;
 
     const receivingFacultyName =
-      received_by_name || remarks?.name;
+      received_by_name ||
+      (status === 'received' ? remarks?.name : undefined);
+
+    const verifyingFacultyName =
+      verified_by_name ||
+      (status === 'verified' ? remarks?.name : undefined);
 
     const document = await documentService.updateDocumentStatus({
       documentId: req.params.id,
       status,
       remarks: remarksText,
       received_by_name: receivingFacultyName,
-      verified_by_name,
+      verified_by_name: verifyingFacultyName,
       userId: req.user.id,
       ip: req.ip,
     });
