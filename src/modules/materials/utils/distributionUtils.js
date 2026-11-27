@@ -1,3 +1,5 @@
+// 
+
 // Constants + pure helpers for Physical Material Distribution.
 // No DB access here, so it is easy to test.
 
@@ -117,12 +119,20 @@ const missingAddressFields = (a) => {
   return missing;
 };
 
+// One-line address from the StudentAddress document (student APK)
+const formatStudentAddress = (a) => {
+  if (!a) return '';
+  const parts = [a.address_line_1, a.address_line_2, a.village_city, a.taluka, a.district, a.state];
+  if (a.country && String(a.country).toLowerCase() !== 'india') parts.push(a.country);
+  return parts.map((p) => String(p || '').trim()).filter(Boolean).join(', ');
+};
+
 /**
  * Build the recipient snapshot from the admission form.
  * Priority: postal address -> permanent address -> basic student.address.
  * `override` (optional) lets staff correct only what is missing/wrong.
  */
-const resolveRecipient = (student, override = null) => {
+const resolveRecipient = (student, override = null, studentAddress = null) => {
   const af = student?.admission_form || {};
   const postal = af.postal_address || {};
   const permanent = af.permanent_address || {};
@@ -131,7 +141,12 @@ const resolveRecipient = (student, override = null) => {
   let pin = '';
   let source = 'NONE';
 
-  if (String(postal.address || '').trim()) {
+  if (studentAddress && formatStudentAddress(studentAddress)) {
+    // Address entered by the student in the APK (highest priority)
+    address = formatStudentAddress(studentAddress);
+    pin = studentAddress.pincode || '';
+    source = 'STUDENT_APP_ADDRESS';
+  } else if (String(postal.address || '').trim()) {
     address = postal.address;
     pin = postal.pin || '';
     source = 'POSTAL_ADDRESS';
@@ -189,4 +204,5 @@ module.exports = {
   pickMobile,
   missingAddressFields,
   resolveRecipient,
+  formatStudentAddress,
 };

@@ -161,7 +161,6 @@
 
 
 
-
 const express = require('express');
 const router = express.Router();
 
@@ -171,6 +170,7 @@ const { authorize } = require('../../../middlewares/authorize');
 const studentAppController = require('../controllers/studentAppController');
 const materialController = require('../../materials/controllers/materialController');
 const feeController = require('../../fees/controllers/feeController');
+const distributionController = require('../../materials/controllers/distributionController');
 
 // All Student APK routes require student authentication.
 router.use(verifyToken, authorize('student'));
@@ -256,6 +256,9 @@ router.get(
 // ==========================================
 // FEES
 // ==========================================
+// Physical study material given to the student (hand / post / courier)
+router.get('/material-distributions', distributionController.myDistributions);
+
 router.get('/fees', feeController.getMyFees);
 
 // ==========================================

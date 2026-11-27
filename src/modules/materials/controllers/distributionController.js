@@ -87,6 +87,12 @@ exports.studentHistory = wrap(async (req, res) => {
   res.json({ success: true, data });
 });
 
+// Student app: logged-in student's own distribution status
+exports.myDistributions = wrap(async (req, res) => {
+  const data = await distributionService.getMyDistributions(req.user.id);
+  res.json({ success: true, data });
+});
+
 exports.summary = wrap(async (req, res) => {
   const data = await distributionService.getSummary(req.query);
   res.json({ success: true, data });
