@@ -102,3 +102,70 @@ exports.verifyToken = async (req, res, next) => {
     next(err);
   }
 };
+
+// ─────────────────────────────────────────────────────────────
+// Role / permission helpers (built on top of req.user set by verifyToken)
+// req.user = { id, role: <roleName>, permissions: [codes] | ['*'] }
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Allow only if the user has ANY of the given role names.
+ * Usage: router.use(verifyToken, authorize('student'));
+ */
+exports.authorize = (...roles) => (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized: no user context' });
+  }
+  if (roles.length && !roles.includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: `Forbidden: requires role ${roles.join(' or ')}`,
+    });
+  }
+  return next();
+};
+
+/**
+ * Allow only if the user has ALL of the given permission codes.
+ * super_admin already has ['*'] from resolvePermissions, so we short-circuit.
+ * Usage: router.use(verifyToken, requirePermission('student_address.view'));
+ */
+exports.requirePermission = (...codes) => (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized: no user context' });
+  }
+  const held = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+  const isSuper = held.includes('*');
+  const hasAll = codes.every((c) => held.includes(c));
+
+  if (!isSuper && !hasAll) {
+    return res.status(403).json({
+      success: false,
+      message: `Forbidden: missing permission ${codes.join(', ')}`,
+    });
+  }
+  return next();
+};
+
+/**
+ * Pass if user role is in `roles` OR user holds the given permission.
+ * Usage: router.use(verifyToken, authorizeOrPermission('student_address.view','admin','office_staff'));
+ */
+exports.authorizeOrPermission = (permissionCode, ...roles) => (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized: no user context' });
+  }
+  const held = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+  const isSuper = held.includes('*');
+
+  const roleOk = roles.includes(req.user.role);
+  const permOk = isSuper || (permissionCode && held.includes(permissionCode));
+
+  if (!roleOk && !permOk) {
+    return res.status(403).json({
+      success: false,
+      message: `Forbidden: requires role (${roles.join(', ') || 'none'}) or permission ${permissionCode || 'n/a'}`,
+    });
+  }
+  return next();
+};

@@ -51,23 +51,26 @@ router.get(
 
 // Enquiry Status-wise Excel Reports
 
+// Enquiry Status-wise Excel Reports
+
 router.get(
   '/enquiries/interested',
   adminOnly,
-  reportController.downloadEnquiryStatusReport
+  reportController.downloadInterestedEnquiries
 );
 
 router.get(
   '/enquiries/not-interested',
   adminOnly,
-  reportController.downloadEnquiryStatusReport
+  reportController.downloadNotInterestedEnquiries
 );
 
 router.get(
   '/enquiries/follow-up',
   adminOnly,
-  reportController.downloadEnquiryStatusReport
+  reportController.downloadFollowUpEnquiries
 );
+
 // Students
 router.get(
   '/students',
